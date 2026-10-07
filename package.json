@@ -1,9 +1,0 @@
-{
-  "name": "last-man-standing-sync",
-  "private": true,
-  "description": "Hourly results job for Last Man Standing, run by GitHub Actions",
-  "engines": { "node": ">=20" },
-  "dependencies": {
-    "firebase-admin": "^12.7.0"
-  }
-}
