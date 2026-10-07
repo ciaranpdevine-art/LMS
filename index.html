@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -61,6 +61,15 @@
       <div id="roundPanel"></div>
     </section>
 
+    <section data-pane="plan" hidden>
+      <div class="sheet">
+        <h2>Plan ahead</h2>
+        <p class="sub">Pencil in a team for each future gameweek to map out your route. Only you can see your plan, and it's saved on this phone. It doesn't count as a pick: you still pick each week on the Coupon.</p>
+        <div id="planSummary"></div>
+      </div>
+      <div id="planRounds" class="plan-rounds"></div>
+    </section>
+
     <section data-pane="table" hidden>
       <div class="sheet">
         <h2>The table</h2>
@@ -101,6 +110,7 @@
     <nav class="tabs" aria-label="Sections">
       <button data-tab="play" aria-selected="true" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z M8 8l8 8 M16 8l-8 8"/></svg>Coupon</button>
       <button data-tab="mine" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z M8 9l2 2 4-4 M8 15h8"/></svg>My picks</button>
+      <button data-tab="plan" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z M14 7l3 3"/></svg>Plan</button>
       <button data-tab="table" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Table</button>
       <button data-tab="rules" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z M9 10h6 M9 14h6"/></svg>Rules</button>
     </nav>
@@ -161,6 +171,6 @@
   </footer>
 </main>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=5"></script>
 </body>
 </html>

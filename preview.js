@@ -59,13 +59,27 @@ function seed() {
   });
   db["rounds/7/picks/p2"] = { team: "LIV", teamName: N.LIV };
   db["rounds/7/picks/p4"] = { team: "ARS", teamName: N.ARS };
+
+  // Sample fixtures for the rest of the season (GW8 to GW38), one round a week.
+  const teams = Object.keys(N), slots = [[0, "12:30"], [0, "15:00"], [0, "15:00"], [0, "15:00"], [0, "15:00"], [0, "17:30"], [1, "14:00"], [1, "14:00"], [1, "16:30"], [2, "20:00"]];
+  const fixed = teams[0], rot = teams.slice(1);
+  for (let gw = 8; gw <= 38; gw++) {
+    const k = gw - 8, ring = rot.slice(k % 19).concat(rot.slice(0, k % 19)), all = [fixed, ...ring];
+    const fixtures = [];
+    for (let i = 0; i < 10; i++) {
+      let a = all[i], b = all[19 - i];
+      if ((k + i) % 2) [a, b] = [b, a];
+      fixtures.push(fx(a, b, at(gw - 7, slots[i][0], slots[i][1])));
+    }
+    db[`rounds/${gw}`] = { gw, deadline: fixtures[0].kickoff, processed: false, fixtures };
+  }
   return db;
 }
 
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
-    if (d && Date.parse(d["rounds/7"]?.deadline) > Date.now()) return d;
+    if (d && d["rounds/38"] && Date.parse(d["rounds/7"]?.deadline) > Date.now()) return d;
   } catch {}
   return seed();
 }

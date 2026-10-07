@@ -184,7 +184,7 @@ function render() {
   if (inOrg) { $("#joinPanel").hidden = true; $("#gameArea").hidden = true; renderOrg(); return; }
   if (!p) { $("#joinPanel").hidden = false; $("#gameArea").hidden = true; return; }
   $("#joinPanel").hidden = true; $("#gameArea").hidden = false;
-  renderStatus(); renderRound(); renderTable(); renderHistory();
+  renderStatus(); renderRound(); renderTable(); renderHistory(); renderPlan();
 }
 
 function renderBoard() {
@@ -252,7 +252,7 @@ function renderRound() {
   const k = fmtWhen(o.deadline);
   const say = !canPick ? "You're not picking any more, but here are this week's games."
     : myPick ? `You've gone with <span class="hand">${esc(myPick.teamName || teamName(o, myPick.team))}</span>. Tap another team to change your mind.`
-    : "Tap the team you think will win.";
+    : (() => { const pl = getPlan()[o.gw]; return pl ? `You pencilled in <span class="hand">${esc(teamName(o, pl))}</span> for this week. Tap it to make it your pick.` : "Tap the team you think will win."; })();
   h += `<div class="coupon${canPick ? "" : " closed"}"><div class="coupon-head"><h2>Gameweek ${o.gw}</h2><div class="closes">Picks close<b>${esc(k.day)}, ${esc(k.time)}</b><span data-clock>${untilText(o.deadline)} to go</span></div></div><div class="coupon-say">${say}</div>`;
   const side = (code, name, cls) => {
     const picked = myPick?.team === code, u = used.has(code) && !picked;
@@ -346,10 +346,76 @@ function renderHistory() {
   const current = o && S.myOpenPick?.gw === o.gw ? S.myOpenPick.team : null;
   const teams = [...all.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const avail = teams.filter(([c]) => !used.has(c)).length;
-  left.innerHTML = `<p class="note">${avail} of ${teams.length} still available.</p><div class="chips">${teams.map(([c, n]) => {
-    const u = used.has(c);
-    return `<span class="chip-t${u ? " gone" : ""}${c === current ? " now" : ""}">${esc(n)}${u ? `<small>GW${used.get(c)}</small>` : c === current ? "<small>this week</small>" : ""}</span>`;
+  const planned = new Map(Object.entries(getPlan()).map(([g, t]) => [t, g]));
+  left.innerHTML = `<p class="note">${avail} of ${teams.length} still available.${planned.size ? ` ${planned.size} pencilled in on your plan.` : ""}</p><div class="chips">${teams.map(([c, n]) => {
+    const u = used.has(c), pl = !u && c !== current && planned.get(c);
+    return `<span class="chip-t${u ? " gone" : ""}${c === current ? " now" : ""}${pl ? " planned" : ""}">${esc(n)}${u ? `<small>GW${used.get(c)}</small>` : c === current ? "<small>this week</small>" : pl ? `<small>plan GW${pl}</small>` : ""}</span>`;
   }).join("")}</div>`;
+}
+
+/* ---------------------------------------------------------------- plan ahead (saved on this phone) */
+const planKey = () => `lms-plan-${myId()}`;
+function getPlan() { try { return JSON.parse(localStorage.getItem(planKey())) || {}; } catch { return {}; } }
+function setPlan(p) { try { localStorage.setItem(planKey(), JSON.stringify(p)); } catch {} }
+const planOpen = new Set();
+
+function renderPlan() {
+  const pid = myId(), p = me(), box = $("#planRounds"), sum = $("#planSummary");
+  if (!pid || !p) return;
+  const o = openRound(), now = Date.now();
+  const future = rounds().filter((r) => ms(r.deadline) > now && (!o || r.gw > o.gw));
+  const plan = getPlan();
+  // forget plans for weeks that have arrived or teams already used
+  const used = usedTeams(pid, o ? o.gw : Infinity);
+  const current = o && S.myOpenPick?.gw === o.gw ? S.myOpenPick.team : null;
+  let tidy = false;
+  for (const gw of Object.keys(plan)) {
+    if (!future.some((r) => r.gw === Number(gw)) || used.has(plan[gw])) { delete plan[gw]; tidy = true; }
+  }
+  if (tidy) setPlan(plan);
+  const plannedAt = new Map(Object.entries(plan).map(([gw, t]) => [t, Number(gw)]));
+  const nameOf = (r, c) => teamName(r, c);
+
+  if (p.status !== "alive" || cfg().winner) {
+    sum.innerHTML = `<p class="note">You're not in the game any more, but you can still look at what's coming up.</p>`;
+  } else {
+    const n = Object.keys(plan).length;
+    const chips = future.slice(0, 8).map((r) => `<button class="pchip${plan[r.gw] ? " set" : ""}" data-jump="${r.gw}" type="button"><small>GW${r.gw}</small>${plan[r.gw] ? esc(nameOf(r, plan[r.gw])) : "?"}</button>`).join("");
+    sum.innerHTML = `<div class="pnow">${o ? `This week (GW${o.gw}): ${current ? `<b class="hand">${esc(S.myOpenPick.teamName || nameOf(o, current))}</b>` : "<b>not picked yet</b>"}` : ""}</div>
+      <div class="pchips">${chips}</div>
+      <div class="row center"><span class="note">${n ? `${n} week${n === 1 ? "" : "s"} pencilled in.` : "Nothing pencilled in yet. Open a gameweek below and tap a team."}</span>${n ? `<button class="btn small ghost" id="planClear" type="button">Rub it all out</button>` : ""}</div>`;
+    sum.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => {
+      planOpen.add(Number(b.dataset.jump)); renderPlan();
+      document.querySelector(`[data-plan-gw="${b.dataset.jump}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+    const clr = $("#planClear");
+    if (clr) clr.onclick = () => twoTap(clr, () => { setPlan({}); renderPlan(); renderHistory(); });
+  }
+
+  if (!future.length) { box.innerHTML = `<div class="sheet"><div class="empty">Fixtures for later gameweeks will appear here once they're published.</div></div>`; return; }
+  const canPlan = p.status === "alive" && !cfg().winner;
+  box.innerHTML = future.map((r) => {
+    const first = fmtWhen(r.deadline), mine = plan[r.gw];
+    const lines = [...(r.fixtures || [])].sort((a, b) => ms(a.kickoff) - ms(b.kickoff)).map((f) => {
+      const t = fmtWhen(f.kickoff);
+      const side = (code, name, cls) => {
+        const u = used.has(code), cur = code === current, here = mine === code, other = plannedAt.has(code) && !here ? plannedAt.get(code) : null;
+        const tag = u ? `used GW${used.get(code)}` : cur ? "this week" : other ? `GW${other}` : "";
+        const dis = !canPlan || u || cur;
+        return `<button class="pteam ${cls}${here ? " here" : ""}${u || cur ? " gone" : ""}${other ? " elsewhere" : ""}" data-plan="${r.gw}:${esc(code)}" type="button" ${dis ? "disabled" : ""} aria-pressed="${here}"><span class="tn">${esc(name)}</span>${tag ? `<small>${tag}</small>` : ""}</button>`;
+      };
+      return `<div class="pline">${side(f.home, f.homeName, "home")}<span class="pko">${esc(t.time)}<small>${esc(t.day)}</small></span>${side(f.away, f.awayName, "away")}</div>`;
+    }).join("");
+    return `<details class="plan-gw" data-plan-gw="${r.gw}" ${planOpen.has(r.gw) ? "open" : ""}><summary><b>GW${r.gw}</b><span class="pd">${esc(first.day)}</span><span class="pp${mine ? " set" : ""}">${mine ? esc(nameOf(r, mine)) : "not planned"}</span></summary><div class="plines">${lines}</div></details>`;
+  }).join("") + `<p class="plan-foot">Kick-off times further ahead are provisional and often move for TV.</p>`;
+
+  box.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => { const g = Number(d.dataset.planGw); d.open ? planOpen.add(g) : planOpen.delete(g); }));
+  box.querySelectorAll("[data-plan]").forEach((b) => (b.onclick = () => {
+    const [gw, team] = b.dataset.plan.split(":"), pl = getPlan();
+    if (pl[gw] === team) delete pl[gw];
+    else { for (const g of Object.keys(pl)) if (pl[g] === team) delete pl[g]; pl[gw] = team; }
+    setPlan(pl); renderPlan(); renderHistory();
+  }));
 }
 
 /* ---------------------------------------------------------------- organiser */
@@ -410,7 +476,7 @@ function newId() {
   return Array.from(r, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 function renderRoundAdmin() {
-  const el = $("#roundAdmin"), rs = rounds();
+  const el = $("#roundAdmin"), op = openRound(), rs = rounds().filter((r) => !op || r.gw <= op.gw);
   if (!rs.length) { el.innerHTML = `<div class="empty">No fixtures loaded yet. Check your settings, then tap Update now.</div>`; return; }
   const now = Date.now();
   el.innerHTML = `<div class="list">${rs.map((r) => {
