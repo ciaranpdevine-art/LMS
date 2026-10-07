@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -121,7 +121,7 @@
     <div class="sheet" id="orgLogin">
       <h2>Organiser</h2>
       <form id="orgForm" class="row">
-        <div class="field"><label for="orgPass">Passcode</label><input id="orgPass" type="password" required autocomplete="current-password"></div>
+        <div class="field"><label for="orgPass">Passcode</label><input id="orgPass" class="secret" type="text" required autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore inputmode="text"></div>
         <button class="btn" type="submit" id="orgBtn">Open organiser tools</button>
       </form>
       <div class="msg" id="orgMsg" role="status"></div>
@@ -170,6 +170,6 @@
   </footer>
 </main>
 
-<script type="module" src="app.js?v=7"></script>
+<script type="module" src="app.js?v=8"></script>
 </body>
 </html>

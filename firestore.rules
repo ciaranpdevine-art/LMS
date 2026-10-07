@@ -34,11 +34,14 @@ service cloud.firestore {
         && (!exists(pickBefore(gw, 2, pid)) || get(pickBefore(gw, 2, pid)).data.team != team);
     }
 
+    // The organiser passcode, typed into the Firebase console as private/admin, field "pass".
+    // Works whether it was saved as text or as a number, and ignores spaces at either end.
+    function passcode() { return string(get(/databases/$(database)/documents/private/admin).data.pass).trim(); }
+
     // Organiser: has saved the current passcode under admins/<their sign-in id>.
     function isAdmin() {
       let mine = /databases/$(database)/documents/admins/$(uid());
-      return signedIn() && exists(mine)
-        && get(mine).data.pass == get(/databases/$(database)/documents/private/admin).data.pass;
+      return signedIn() && exists(mine) && get(mine).data.pass == passcode();
     }
 
     // New players can join until the first gameweek kicks off.
@@ -58,7 +61,8 @@ service cloud.firestore {
       allow read, delete: if signedIn() && uid() == userId;
       allow create, update: if signedIn() && uid() == userId
         && request.resource.data.keys().hasOnly(['pass', 'at'])
-        && request.resource.data.pass == get(/databases/$(database)/documents/private/admin).data.pass;
+        && request.resource.data.pass is string
+        && request.resource.data.pass == passcode();
     }
 
     // Game settings and last-update info.

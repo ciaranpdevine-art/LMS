@@ -31,9 +31,9 @@ if (PREVIEW) {
   bar.innerHTML = `<p><b>Preview mode.</b> The players, fixtures and results are samples, and nothing you do leaves this phone. To join as a new player, use code <b>DEMO-0001</b> with any nickname. To see a player with history, use <b>DEMO-0002</b> with the nickname <b>Big Dave</b>. The organiser passcode is <b>demo</b>.</p><button class="btn small ghost" type="button" id="resetPreview">Start again</button>`;
   document.querySelector(".wrap").prepend(bar);
   $("#resetPreview").onclick = () => F.resetPreview();
-  // Stop the phone autofilling a saved password into the preview passcode box.
+  // Fill in the preview passcode.
   const pass = $("#orgPass");
-  pass.type = "text"; pass.autocomplete = "off"; pass.setAttribute("autocapitalize", "none"); pass.value = "demo";
+  pass.value = "demo";
 }
 // Preview: stand-in server in preview.js. Real game: write straight to the database,
 // where the security rules (firestore.rules) do the checking.
@@ -72,8 +72,13 @@ const REAL = {
   },
   async adminLogin({ passcode }) {
     const pass = String(passcode || "").trim();
+    if (!S.uid) throw oops("Still connecting. Wait a moment and try again.");
     try { await setDoc(doc(db, "admins", S.uid), { pass, at: serverTimestamp() }); }
-    catch { await new Promise((r) => setTimeout(r, 800)); throw oops("That passcode isn't right."); }
+    catch (e) {
+      await new Promise((r) => setTimeout(r, 800));
+      if (String(e?.code || "").includes("permission-denied")) throw oops("That passcode isn't right. It must match the pass field in Firebase exactly, including capital letters.");
+      throw oops(`Couldn't check the passcode (${e?.code || e?.message || "unknown error"}). Check your connection and try again.`);
+    }
     return { ok: true };
   },
   async makePick({ gw, team }) {
@@ -569,7 +574,7 @@ async function loadSeason(btn) {
   const m = $("#syncMsg");
   btn.disabled = true; m.className = "msg"; m.textContent = "Loading fixtures…";
   try {
-    const { FIXTURES, SEASON } = await import("./fixtures.js?v=7");
+    const { FIXTURES, SEASON } = await import("./fixtures.js?v=8");
     const byGw = new Map();
     for (const [gw, when, home, away] of FIXTURES) {
       if (!NAME2CODE[home] || !NAME2CODE[away]) throw oops(`Unknown team in the fixture list: ${!NAME2CODE[home] ? home : away}.`);

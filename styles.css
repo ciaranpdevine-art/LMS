@@ -334,3 +334,4 @@ input:focus{border-color:var(--biro);outline:none}
 .seg button:disabled{opacity:.35;cursor:default}
 #roundAdmin h3{margin-top:16px}
 .res-item .who-l{flex:none}.res-item{gap:10px}
+.secret{-webkit-text-security:disc;text-security:disc;font-family:monospace;letter-spacing:.12em}
