@@ -260,3 +260,20 @@ input:focus{border-color:var(--biro);outline:none}
   .coupon-head .closes{text-align:left;display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline}
   .coupon-head .closes b{display:inline}
 }
+
+/* my picks */
+.mine{list-style:none;margin:12px 0 0;padding:0;display:grid}
+.mine li{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--sheet-rule)}
+.mine li:last-child{border-bottom:0}
+.gwk{font-weight:900;font-stretch:120%;font-size:15px;color:var(--muted)}
+.mp{min-width:0;display:flex;flex-direction:column}
+.mp b{font-size:17px}
+.mp b.hand{font-family:var(--hand);font-weight:400;font-size:24px;line-height:1.05;color:var(--biro)}
+.mp span{font-size:14px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip-t{display:inline-flex;align-items:baseline;gap:5px;padding:6px 10px;border:2px solid var(--text);border-radius:3px;font-weight:700;font-stretch:90%;font-size:14px;background:#fff}
+.chip-t small{font-family:var(--hand);font-size:14px;font-weight:400;color:var(--ink-soft)}
+.chip-t.gone{border-color:var(--sheet-rule);color:var(--muted);text-decoration:line-through;background:transparent}
+.chip-t.gone small{text-decoration:none}
+.chip-t.now{border-color:var(--biro);color:var(--biro);background:#eef1ff}
+.tabs button{flex:0 1 110px}

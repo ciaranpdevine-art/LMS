@@ -28,7 +28,7 @@ if (!PREVIEW && (location.hostname === "localhost" || location.hostname === "127
 if (PREVIEW) {
   const bar = document.createElement("div");
   bar.className = "preview";
-  bar.innerHTML = `<p><b>Preview mode.</b> The players, fixtures and results are samples, and nothing you do leaves this phone. To join, use code <b>DEMO-0001</b> with any nickname. Once you've used it, it only works with that same nickname. The organiser passcode is <b>demo</b>.</p><button class="btn small ghost" type="button" id="resetPreview">Start again</button>`;
+  bar.innerHTML = `<p><b>Preview mode.</b> The players, fixtures and results are samples, and nothing you do leaves this phone. To join as a new player, use code <b>DEMO-0001</b> with any nickname. To see a player with history, use <b>DEMO-0002</b> with the nickname <b>Big Dave</b>. The organiser passcode is <b>demo</b>.</p><button class="btn small ghost" type="button" id="resetPreview">Start again</button>`;
   document.querySelector(".wrap").prepend(bar);
   $("#resetPreview").onclick = () => F.resetPreview();
   // Stop the phone autofilling a saved password into the preview passcode box.
@@ -184,7 +184,7 @@ function render() {
   if (inOrg) { $("#joinPanel").hidden = true; $("#gameArea").hidden = true; renderOrg(); return; }
   if (!p) { $("#joinPanel").hidden = false; $("#gameArea").hidden = true; return; }
   $("#joinPanel").hidden = true; $("#gameArea").hidden = false;
-  renderStatus(); renderRound(); renderTable();
+  renderStatus(); renderRound(); renderTable(); renderHistory();
 }
 
 function renderBoard() {
@@ -309,6 +309,47 @@ function renderTable() {
   }).join("");
   const notes = shown.filter((r) => r.everyoneSurvived).map((r) => `<p class="board-note">Gameweek ${r.gw}: everyone left went out, so everyone survived.</p>`).join("");
   el.innerHTML = `<ul class="board">${rows}</ul>${notes}`;
+}
+
+function renderHistory() {
+  const pid = myId(), p = me(), el = $("#historyBody"), left = $("#teamsLeft");
+  if (!pid || !p) return;
+  const now = Date.now(), o = openRound();
+  const rs = rounds().filter((r) => ms(r.deadline) <= now || (o && r.gw === o.gw));
+  const rows = [];
+  for (const r of [...rs].reverse()) {
+    if (r.processed && r.results && !r.results[pid]) continue; // joined after this round
+    if (p.status === "out" && r.gw > p.outGw) continue;
+    const pk = pickOf(r.gw, pid), open = o && r.gw === o.gw;
+    if (!pk) {
+      rows.push(`<li><span class="gwk">GW${r.gw}</span><div class="mp"><b>${open ? "No pick yet" : "No pick"}</b><span>${open ? `Picks close ${esc(fmtWhen(r.deadline).day)}, ${esc(fmtWhen(r.deadline).time)}` : "Missed the deadline"}</span></div>${open ? "" : `<span class="res N">Out</span>`}</li>`);
+      continue;
+    }
+    const f = (r.fixtures || []).find((x) => x.home === pk.team || x.away === pk.team);
+    const home = f && f.home === pk.team;
+    const opp = f ? `${home ? "v" : "at"} ${esc(home ? f.awayName : f.homeName)}` : "";
+    const res = open ? "?" : resultOf(r, pid);
+    const played = f && (f.status === "finished" || f.status === "live") && f.hg != null;
+    const score = played ? (home ? `${f.hg}–${f.ag}` : `${f.ag}–${f.hg}`) : "";
+    const when = f ? `${fmtWhen(f.kickoff).day}, ${fmtWhen(f.kickoff).time}` : "";
+    const badge = open ? `<span class="res q">Can change</span>`
+      : res === "?" ? `<span class="res q">${f?.status === "live" ? "Live" : "To play"}</span>`
+      : `<span class="res ${res}">${res === "W" ? "Won" : res === "D" ? "Drew" : res === "L" ? "Lost" : res === "P" ? "Postponed" : esc(RES_WORD[res])}</span>`;
+    rows.push(`<li><span class="gwk">GW${r.gw}</span><div class="mp"><b class="hand">${esc(pk.teamName || teamName(r, pk.team))}</b><span>${opp}${score ? `, ${score}` : when ? `, ${esc(when)}` : ""}</span></div>${badge}</li>`);
+  }
+  el.innerHTML = rows.length ? `<ul class="mine">${rows.join("")}</ul>` : `<div class="empty">Your picks will build up here, week by week. Make your first one on the Coupon tab.</div>`;
+
+  // every team seen in any fixture this season
+  const all = new Map();
+  for (const r of S.rounds) for (const f of r.fixtures || []) { all.set(f.home, f.homeName); all.set(f.away, f.awayName); }
+  const used = usedTeams(pid, o ? o.gw : Infinity);
+  const current = o && S.myOpenPick?.gw === o.gw ? S.myOpenPick.team : null;
+  const teams = [...all.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const avail = teams.filter(([c]) => !used.has(c)).length;
+  left.innerHTML = `<p class="note">${avail} of ${teams.length} still available.</p><div class="chips">${teams.map(([c, n]) => {
+    const u = used.has(c);
+    return `<span class="chip-t${u ? " gone" : ""}${c === current ? " now" : ""}">${esc(n)}${u ? `<small>GW${used.get(c)}</small>` : c === current ? "<small>this week</small>" : ""}</span>`;
+  }).join("")}</div>`;
 }
 
 /* ---------------------------------------------------------------- organiser */

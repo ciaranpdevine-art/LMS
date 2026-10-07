@@ -69,6 +69,18 @@
       </div>
     </section>
 
+    <section data-pane="mine" hidden>
+      <div class="sheet">
+        <h2>My picks</h2>
+        <div id="historyBody"></div>
+      </div>
+      <div class="sheet">
+        <h2>Teams you've got left</h2>
+        <p class="sub">Each team can only be used once, so plan ahead.</p>
+        <div id="teamsLeft"></div>
+      </div>
+    </section>
+
     <section data-pane="rules" hidden>
       <div class="sheet rules">
         <h2>House rules</h2>
@@ -88,6 +100,7 @@
 
     <nav class="tabs" aria-label="Sections">
       <button data-tab="play" aria-selected="true" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z M8 8l8 8 M16 8l-8 8"/></svg>Coupon</button>
+      <button data-tab="mine" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z M8 9l2 2 4-4 M8 15h8"/></svg>My picks</button>
       <button data-tab="table" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Table</button>
       <button data-tab="rules" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z M9 10h6 M9 14h6"/></svg>Rules</button>
     </nav>
