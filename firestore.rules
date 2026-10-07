@@ -3,7 +3,7 @@ rules_version = '2';
 // Last Man Standing: who can read and change what (Firebase free plan, no server code).
 // Players change the database directly, and these rules do the checking that a server would:
 // codes, unique nicknames, pick deadlines, teams already used and the organiser passcode.
-// The hourly GitHub job uses an admin key and isn't limited by these rules.
+// Paste this whole file into Firebase console > Firestore Database > Rules, then tap Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -20,6 +20,19 @@ service cloud.firestore {
     function player(pid) { return get(/databases/$(database)/documents/players/$(pid)).data; }
     function playerAfter(pid) { return getAfter(/databases/$(database)/documents/players/$(pid)).data; }
     function round(gw) { return get(/databases/$(database)/documents/rounds/$(gw)).data; }
+    function roundBefore(gw, n) { return /databases/$(database)/documents/rounds/$(string(int(gw) - n)); }
+    function pickBefore(gw, n, pid) { return /databases/$(database)/documents/rounds/$(string(int(gw) - n))/picks/$(pid); }
+
+    // A gameweek opens for picks as soon as the one before it has kicked off.
+    function isNextRound(gw) {
+      return !exists(roundBefore(gw, 1)) || get(roundBefore(gw, 1)).data.deadline <= request.time;
+    }
+    // Teams are added to a player's used list when the organiser settles a gameweek.
+    // Until then, also check the last two picks directly.
+    function notPickedRecently(gw, pid, team) {
+      return (!exists(pickBefore(gw, 1, pid)) || get(pickBefore(gw, 1, pid)).data.team != team)
+        && (!exists(pickBefore(gw, 2, pid)) || get(pickBefore(gw, 2, pid)).data.team != team);
+    }
 
     // Organiser: has saved the current passcode under admins/<their sign-in id>.
     function isAdmin() {
@@ -35,7 +48,7 @@ service cloud.firestore {
       return !exists(start) || request.time < get(start).data.deadline;
     }
 
-    // Written only by the GitHub job.
+    // The organiser passcode lives here. Add it by hand in the Firebase console; nobody can read it.
     match /private/{docId} {
       allow read, write: if false;
     }
@@ -109,7 +122,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Fixtures and results: written by the GitHub job; the organiser can correct them.
+    // Fixtures and results: entered by the organiser.
     match /rounds/{gw} {
       allow read: if true;
       allow write: if isAdmin();
@@ -121,12 +134,13 @@ service cloud.firestore {
           || (hasSession() && session().playerId == pid);
         allow create, update: if hasSession()
           && session().playerId == pid
-          && round(gw).get('open', false) == true
           && request.time < round(gw).deadline
+          && isNextRound(gw)
           && player(pid).status == 'alive'
           && request.resource.data.keys().hasOnly(['team', 'teamName', 'at'])
           && request.resource.data.team in round(gw).teams
           && !(request.resource.data.team in player(pid).get('used', []))
+          && notPickedRecently(gw, pid, request.resource.data.team)
           && request.resource.data.teamName is string
           && request.resource.data.teamName.size() < 40;
         allow delete: if false;

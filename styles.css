@@ -321,3 +321,16 @@ input:focus{border-color:var(--biro);outline:none}
 }
 .wrap>*,[data-pane]>*,#roundPanel>*{min-width:0}
 .plan-gw summary{grid-template-columns:auto 1fr auto 18px}
+
+/* organiser: results */
+.res-item{flex-direction:column;align-items:stretch}
+.kick{display:flex;flex-direction:column;gap:3px;margin-top:6px;font-size:12.5px}
+.kick input{font-size:15px;padding:7px 9px;max-width:240px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{flex:1 1 30%;min-width:0;padding:9px 6px;border:2px solid var(--sheet-rule);border-radius:4px;background:#fff;font-weight:700;font-stretch:90%;font-size:13.5px;line-height:1.15;color:var(--text)}
+.seg button[data-v="P"],.seg button[data-v=""]{flex:1 1 40%;font-weight:600;color:var(--muted)}
+.seg button[aria-checked="true"]{border-color:var(--biro);background:#eef1ff;color:var(--biro)}
+.seg button[data-v=""][aria-checked="true"]{border-color:var(--text);background:#f3f1ec;color:var(--text)}
+.seg button:disabled{opacity:.35;cursor:default}
+#roundAdmin h3{margin-top:16px}
+.res-item .who-l{flex:none}.res-item{gap:10px}

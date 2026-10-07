@@ -119,6 +119,16 @@ export const updateDoc = async (ref, data) => {
 };
 export const deleteDoc = async (ref) => { delete DB[ref.path]; changed(); };
 export const serverTimestamp = () => new Date().toISOString();
+export const getDoc = async (ref) => snap(ref);
+export const getDocs = async (ref) => snap(ref);
+export const writeBatch = () => {
+  const ops = [];
+  return {
+    set: (ref, data, opt) => ops.push(() => { DB[ref.path] = opt?.merge ? { ...(DB[ref.path] || {}), ...clone(data) } : clone(data); }),
+    update: (ref, data) => ops.push(() => { DB[ref.path] = { ...DB[ref.path], ...clone(data) }; }),
+    commit: async () => { ops.forEach((f) => f()); changed(); },
+  };
+};
 
 /* ---------- sign-in ---------- */
 export const getAuth = () => ({});

@@ -13,7 +13,7 @@ const F = PREVIEW
 const {
   initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signOut,
   getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  getFunctions, httpsCallable, getDoc, writeBatch,
+  getFunctions, httpsCallable, getDoc, getDocs, writeBatch,
 } = F;
 
 const app = initializeApp(firebaseConfig);
@@ -81,7 +81,6 @@ const REAL = {
     if (!pid) throw oops("Enter your code first.");
     const r = S.rounds.find((x) => x.gw === gw);
     if (!r || ms(r.deadline) <= Date.now()) throw oops("Picks for that gameweek have closed.");
-    if (!r.open) throw oops("Picks for this gameweek open within the hour. Try again shortly.");
     const f = (r.fixtures || []).find((x) => x.home === team || x.away === team);
     if (!f) throw oops("That team doesn't play this gameweek.");
     const name = f.home === team ? f.homeName : f.awayName;
@@ -94,12 +93,7 @@ const REAL = {
     throw oops("Results update by themselves every hour.");
   },
 };
-// GitHub page where the organiser can run the hourly update straight away.
-const GH = (() => {
-  const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : null;
-  const repo = location.pathname.split("/").filter(Boolean)[0];
-  return owner && repo ? `https://github.com/${owner}/${repo}/actions/workflows/sync.yml` : null;
-})();
+
 
 const S = {
   uid: null, session: null, config: null, sync: null,
@@ -139,6 +133,7 @@ function outcome(r, team) {
   if (!f) return "X";
   const s = effStatus(f, ms(r.deadline));
   if (s === "postponed") return "P";
+  if (s === "finished" && f.result) return f.result === "D" ? "D" : (f.result === "H") === (f.home === team) ? "W" : "L";
   if (s !== "finished" || f.hg == null || f.ag == null) return "?";
   const gf = f.home === team ? f.hg : f.ag, ga = f.home === team ? f.ag : f.hg;
   return gf > ga ? "W" : gf === ga ? "D" : "L";
@@ -185,7 +180,6 @@ function usedTeams(pid, beforeGw) {
 /* ---------------------------------------------------------------- subscriptions */
 function subscribePublic() {
   onSnapshot(doc(db, "config", "game"), (s) => { S.config = s.exists() ? s.data() : null; S.loaded.config = true; render(); }, showLoadError);
-  onSnapshot(doc(db, "config", "sync"), (s) => { S.sync = s.exists() ? s.data() : null; renderOrg(); }, () => {});
   onSnapshot(collection(db, "players"), (s) => { const o = {}; s.forEach((d) => (o[d.id] = d.data())); S.players = o; S.loaded.players = true; render(); }, showLoadError);
   onSnapshot(collection(db, "rounds"), (s) => {
     S.rounds = s.docs.map((d) => d.data()).filter((r) => typeof r.gw === "number");
@@ -316,7 +310,7 @@ function renderRound() {
     rp.innerHTML = h + `<div class="sheet"><h2>Next round</h2><div class="empty">The next gameweek's fixtures appear here once they're confirmed.</div></div>`;
     return;
   }
-  const waiting = !PREVIEW && !o.open; // the hourly update hasn't opened this round yet
+  const waiting = false;
   const canPick = p.status === "alive" && !cfg().winner && !waiting;
   const myPick = S.myOpenPick?.gw === o.gw ? S.myOpenPick : null;
   const used = usedTeams(pid, o.gw);
@@ -519,9 +513,6 @@ function renderOrg() {
   $("#playerList").querySelectorAll("[data-restore]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.restore), { status: S.players[b.dataset.restore].prevStatus || "alive" })));
 
   // sync info
-  const sy = S.sync;
-  $("#syncInfo").textContent = sy?.at ? `Last update ${fmtWhen(sy.at).day}, ${fmtWhen(sy.at).time}${sy.fixtures?.error ? " · feed error, see below" : ""}` : "No update has run yet.";
-  if (sy?.fixtures?.error && !$("#syncMsg").textContent) { $("#syncMsg").className = "msg err"; $("#syncMsg").textContent = `Results feed problem: ${sy.fixtures.error}`; }
 
   if (S.editingGw == null) renderRoundAdmin();
 
@@ -547,41 +538,164 @@ function newId() {
   const r = crypto.getRandomValues(new Uint8Array(15));
   return Array.from(r, (x) => x.toString(16).padStart(2, "0")).join("");
 }
-function renderRoundAdmin() {
-  const el = $("#roundAdmin"), op = openRound(), rs = rounds().filter((r) => !op || r.gw <= op.gw);
-  if (!rs.length) { el.innerHTML = `<div class="empty">No fixtures loaded yet. Check your settings, then tap Update now.</div>`; return; }
-  const now = Date.now();
-  el.innerHTML = `<div class="list">${rs.map((r) => {
-    const fx = r.fixtures || [], fin = fx.filter((f) => ["finished", "postponed"].includes(effStatus(f, ms(r.deadline)))).length;
-    const picks = S.picksByGw[r.gw] ? Object.keys(S.picksByGw[r.gw]).length : null;
-    const state = r.processed ? "finished, knock-outs done" : ms(r.deadline) > now ? `picks open until ${fmtWhen(r.deadline).day} ${fmtWhen(r.deadline).time}` : `${fin}/${fx.length} results in`;
-    return `<div class="item"><div class="who-l"><b>GW${r.gw}</b><span class="note">${state}${picks != null ? ` · ${picks} picks` : ""}</span></div>${r.processed ? "" : `<button class="btn small ghost" data-edit="${r.gw}">Fix a result</button>`}</div>`;
-  }).join("")}</div>`;
-  el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editRound(Number(b.dataset.edit))));
+/* ---------------------------------------------------------------- organiser: fixtures and results */
+const NAME2CODE = {
+  "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE", "Brighton": "BHA",
+  "Chelsea": "CHE", "Coventry": "COV", "Crystal Palace": "CRY", "Everton": "EVE", "Fulham": "FUL",
+  "Hull": "HUL", "Ipswich": "IPS", "Leeds": "LEE", "Liverpool": "LIV", "Man City": "MCI",
+  "Man United": "MUN", "Newcastle": "NEW", "Nott'm Forest": "NFO", "Sunderland": "SUN", "Tottenham": "TOT",
+};
+// UK clock time <-> exact moment, allowing for British Summer Time.
+function londonOffset(t) {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(t));
+  const g = (k) => Number(p.find((x) => x.type === k).value);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute")) - Math.floor(t / 60000) * 60000;
 }
+function londonToIso(local) {
+  const [d, tm] = String(local).split("T"), [y, mo, da] = d.split("-").map(Number), [h, mi] = tm.split(":").map(Number);
+  const wall = Date.UTC(y, mo - 1, da, h, mi);
+  let t = wall;
+  for (let i = 0; i < 3; i++) t = wall - londonOffset(t);
+  return new Date(t).toISOString();
+}
+function isoToLondon(iso) {
+  const t = ms(iso); if (Number.isNaN(t)) return "";
+  return new Date(t + londonOffset(t)).toISOString().slice(0, 16);
+}
+const resolved = (f) => ["finished", "postponed"].includes(f.status);
+const firstKick = (fx) => { const live = fx.filter((f) => f.status !== "postponed"); const t = (live.length ? live : fx).map((f) => ms(f.kickoff)); return new Date(Math.min(...t)); };
+
+async function loadSeason(btn) {
+  const m = $("#syncMsg");
+  btn.disabled = true; m.className = "msg"; m.textContent = "Loading fixtures…";
+  try {
+    const { FIXTURES, SEASON } = await import("./fixtures.js?v=7");
+    const byGw = new Map();
+    for (const [gw, when, home, away] of FIXTURES) {
+      if (!NAME2CODE[home] || !NAME2CODE[away]) throw oops(`Unknown team in the fixture list: ${!NAME2CODE[home] ? home : away}.`);
+      if (!byGw.has(gw)) byGw.set(gw, []);
+      byGw.get(gw).push({ id: `${gw}-${byGw.get(gw).length + 1}`, home: NAME2CODE[home], homeName: home, away: NAME2CODE[away], awayName: away, kickoff: londonToIso(when), status: "scheduled", hg: null, ag: null, result: null });
+    }
+    const now = Date.now(), have = new Set(S.rounds.map((r) => r.gw));
+    let start = Number(cfg().startGw) || 0;
+    if (!start) start = [...byGw.entries()].filter(([, fx]) => firstKick(fx).getTime() > now).map(([g]) => g).sort((a, b) => a - b)[0];
+    if (!start) throw oops("Every gameweek in the fixture list has already started.");
+    const b = writeBatch(db);
+    let n = 0;
+    for (const [gw, fx] of byGw) {
+      if (gw < start || have.has(gw)) continue;
+      fx.sort((a, z) => ms(a.kickoff) - ms(z.kickoff));
+      b.set(doc(db, "rounds", String(gw)), { gw, fixtures: fx, deadline: firstKick(fx), teams: [...new Set(fx.flatMap((f) => [f.home, f.away]))], processed: false });
+      n++;
+    }
+    b.set(doc(db, "config", "game"), { startGw: start, season: cfg().season || SEASON, entryFee: Number(cfg().entryFee) || 0 }, { merge: true });
+    await b.commit();
+    m.textContent = n ? `Loaded ${n} gameweeks, from Gameweek ${start} to the end of the season.` : "All the fixtures were already loaded.";
+  } catch (e) { m.className = "msg err"; m.textContent = errText(e, "Couldn't load the fixtures. Check you're signed in as organiser and try again."); }
+  finally { btn.disabled = false; }
+}
+
+function renderRoundAdmin() {
+  const el = $("#roundAdmin"), now = Date.now();
+  if (!S.rounds.length) {
+    el.innerHTML = `<div class="empty">No fixtures yet. Load the season to add every gameweek from the next one to Gameweek 38.<div class="row" style="justify-content:center"><button class="btn go" type="button" id="loadSeason">Load season fixtures</button></div></div>`;
+    $("#loadSeason").onclick = (e) => loadSeason(e.currentTarget);
+    return;
+  }
+  const all = rounds();
+  const todo = all.filter((r) => !r.processed && ms(r.deadline) <= now);
+  const upcoming = all.filter((r) => ms(r.deadline) > now);
+  const settled = all.filter((r) => r.processed).slice(-2);
+  const row = (r) => {
+    const fx = r.fixtures || [], fin = fx.filter(resolved).length;
+    const picks = S.picksByGw[r.gw] ? Object.keys(S.picksByGw[r.gw]).length : null;
+    const k = fmtWhen(r.deadline);
+    const state = r.processed ? "Settled" : ms(r.deadline) > now ? `Picks close ${k.day} ${k.time}` : `${fin} of ${fx.length} results in`;
+    const btn = r.processed ? "" : ms(r.deadline) > now ? `<button class="btn small ghost" data-edit="${r.gw}" type="button">Change times</button>` : `<button class="btn small go" data-edit="${r.gw}" type="button">Enter results</button>`;
+    return `<div class="item"><div class="who-l"><b>GW${r.gw}</b><span class="note">${state}${picks != null ? ` · ${picks} pick${picks === 1 ? "" : "s"}` : ""}</span></div>${btn}</div>`;
+  };
+  const showAll = S.showAllRounds;
+  el.innerHTML = (todo.length ? `<h3>Waiting for results</h3><div class="list">${todo.map(row).join("")}</div>` : "")
+    + `<h3>Coming up</h3><div class="list">${(showAll ? upcoming : upcoming.slice(0, 3)).map(row).join("") || `<div class="empty">No more gameweeks.</div>`}</div>`
+    + (upcoming.length > 3 ? `<div class="row"><button class="btn small ghost" id="toggleRounds" type="button">${showAll ? "Show fewer" : `Show all ${upcoming.length} gameweeks`}</button></div>` : "")
+    + (settled.length ? `<h3>Settled</h3><div class="list">${settled.map(row).join("")}</div>` : "");
+  el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editRound(Number(b.dataset.edit))));
+  const tg = $("#toggleRounds"); if (tg) tg.onclick = () => { S.showAllRounds = !showAll; renderRoundAdmin(); };
+}
+
 function editRound(gw) {
   S.editingGw = gw;
   const r = S.rounds.find((x) => x.gw === gw), el = $("#roundAdmin");
-  el.innerHTML = `<h3>GW${gw} results</h3><p class="note">Only change a result if the feed has it wrong. Your changes won't be overwritten.</p><div class="list">${(r.fixtures || []).map((f, i) => `
-    <div class="item"><div class="who-l"><b>${esc(f.homeName)} v ${esc(f.awayName)}</b>${f.manual ? '<span class="note">set by you</span>' : ""}</div>
-    <div class="row" style="align-items:center"><input class="score" id="hg${i}" type="number" min="0" value="${f.hg ?? ""}" aria-label="${esc(f.homeName)} goals"><input class="score" id="ag${i}" type="number" min="0" value="${f.ag ?? ""}" aria-label="${esc(f.awayName)} goals">
-    <select id="st${i}" style="width:auto"><option value="scheduled">Not played</option><option value="live">Live</option><option value="finished">Full time</option><option value="postponed">Postponed</option></select></div></div>`).join("")}</div>
-    <div class="row" style="margin-top:12px"><button class="btn" id="saveRes" type="button">Save results</button><button class="btn ghost" id="cancelRes" type="button">Cancel</button></div><div class="msg" id="resMsg"></div>`;
-  (r.fixtures || []).forEach((f, i) => ($("#st" + i).value = f.status || "scheduled"));
+  const started = ms(r.deadline) <= Date.now();
+  const fx = [...(r.fixtures || [])].sort((a, b) => ms(a.kickoff) - ms(b.kickoff));
+  const cur = (f) => (f.status === "postponed" ? "P" : f.result || (f.status === "finished" && f.hg != null ? (f.hg > f.ag ? "H" : f.hg === f.ag ? "D" : "A") : ""));
+  el.innerHTML = `<h3>Gameweek ${gw}</h3><p class="note">${started ? "Pick the result of each match once it's finished. When every match has a result, players are knocked out automatically." : "Picks close at the first kick-off. Change a time here if a match moves."}</p>
+    <div class="list">${fx.map((f) => `
+      <div class="item res-item" data-id="${esc(f.id)}"><div class="who-l"><b>${esc(f.homeName)} v ${esc(f.awayName)}</b>
+        <label class="kick">Kick-off (UK time)<input type="datetime-local" data-k="${esc(f.id)}" value="${esc(isoToLondon(f.kickoff))}"></label></div>
+        <div class="seg" role="radiogroup" aria-label="Result of ${esc(f.homeName)} v ${esc(f.awayName)}">
+          ${[["H", f.homeName], ["D", "Draw"], ["A", f.awayName], ["P", "Postponed"], ["", "Not played"]].map(([v, t]) => `<button type="button" role="radio" data-r="${esc(f.id)}" data-v="${v}" aria-checked="${cur(f) === v}" ${!started && v && v !== "P" ? "disabled" : ""}>${esc(v === "H" || v === "A" ? `${t} win` : t)}</button>`).join("")}
+        </div></div>`).join("")}</div>
+    <div class="row"><button class="btn go" id="saveRes" type="button">Save</button><button class="btn ghost" id="cancelRes" type="button">Cancel</button></div><div class="msg" id="resMsg" role="status"></div>`;
+  el.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => {
+    el.querySelectorAll(`[data-r="${CSS.escape(b.dataset.r)}"]`).forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+  }));
   $("#cancelRes").onclick = () => { S.editingGw = null; renderOrg(); };
   $("#saveRes").onclick = async () => {
-    const fixtures = (r.fixtures || []).map((f, i) => {
-      const hg = $("#hg" + i).value, ag = $("#ag" + i).value, status = $("#st" + i).value;
-      const n = { ...f, hg: hg === "" ? null : Number(hg), ag: ag === "" ? null : Number(ag), status };
-      const changed = n.hg !== f.hg || n.ag !== f.ag || n.status !== f.status;
-      return changed || f.manual ? { ...n, manual: true } : f;
+    const msg = $("#resMsg"), save = $("#saveRes");
+    const fixtures = (r.fixtures || []).map((f) => {
+      const pick = el.querySelector(`[data-r="${CSS.escape(f.id)}"][aria-checked="true"]`)?.dataset.v ?? "";
+      const k = el.querySelector(`[data-k="${CSS.escape(f.id)}"]`)?.value;
+      const kickoff = k ? londonToIso(k) : f.kickoff;
+      const status = pick === "P" ? "postponed" : pick ? "finished" : "scheduled";
+      return { ...f, kickoff, status, result: pick && pick !== "P" ? pick : null, hg: null, ag: null };
     });
-    if (fixtures.some((f) => f.status === "finished" && (f.hg == null || f.ag == null))) {
-      $("#resMsg").className = "msg err"; $("#resMsg").textContent = "Add both scores for every full-time match."; return;
-    }
-    try { await updateDoc(doc(db, "rounds", String(gw)), { fixtures }); S.editingGw = null; renderOrg(); $("#syncMsg").className = "msg"; $("#syncMsg").textContent = "Saved. Tap Update now to apply any knock-outs straight away."; }
-    catch (e) { $("#resMsg").className = "msg err"; $("#resMsg").textContent = "Couldn't save. Check your connection and try again."; }
+    const upd = { fixtures };
+    if (!started) upd.deadline = firstKick(fixtures);
+    save.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
+    try {
+      await updateDoc(doc(db, "rounds", String(gw)), upd);
+      const fresh = { ...r, ...upd };
+      let note = "Saved.";
+      if (started && fixtures.every(resolved)) note = await settleRound(fresh);
+      else if (started) note = `Saved. ${fixtures.filter((f) => !resolved(f)).length} match${fixtures.filter((f) => !resolved(f)).length === 1 ? "" : "es"} still to go before anyone is knocked out.`;
+      S.editingGw = null; renderOrg();
+      $("#syncMsg").className = "msg"; $("#syncMsg").textContent = note;
+    } catch (e) { msg.className = "msg err"; msg.textContent = errText(e, "Couldn't save. Check your connection and try again."); save.disabled = false; }
   };
+}
+
+// Every match has a result: record used teams, knock players out, find a winner.
+async function settleRound(r) {
+  const earlier = rounds().filter((x) => x.gw < r.gw && !x.processed);
+  if (earlier.length) return `Saved. Gameweek ${r.gw} will be settled once Gameweek ${earlier[0].gw} has all its results.`;
+  const picksSnap = await getDocs(collection(db, "rounds", String(r.gw), "picks"));
+  const picks = {};
+  picksSnap.forEach((d) => (picks[d.id] = d.data().team));
+  const counted = Object.entries(S.players).filter(([, p]) => p.status !== "removed");
+  const alive = counted.filter(([, p]) => p.status === "alive").map(([id]) => id);
+  const results = {}, fallen = [];
+  for (const id of alive) {
+    const team = picks[id] || null, res = outcome(r, team);
+    results[id] = { team, res };
+    if (!(res === "W" || res === "P")) fallen.push(id);
+  }
+  const everyone = alive.length > 0 && fallen.length === alive.length;
+  const out = everyone ? [] : fallen;
+  const b = writeBatch(db);
+  for (const [id, p] of counted) {
+    const upd = {};
+    if (picks[id]) upd.used = [...new Set([...(p.used || []), picks[id]])];
+    if (out.includes(id)) Object.assign(upd, { status: "out", outGw: r.gw, outResult: results[id] });
+    if (Object.keys(upd).length) b.update(doc(db, "players", id), upd);
+  }
+  b.update(doc(db, "rounds", String(r.gw)), { processed: true, results, everyoneSurvived: everyone });
+  const left = alive.filter((id) => !out.includes(id));
+  if (left.length === 1 && counted.length > 1) b.set(doc(db, "config", "game"), { winner: left[0], wonGw: r.gw }, { merge: true });
+  await b.commit();
+  if (left.length === 1 && counted.length > 1) return `Gameweek ${r.gw} settled. ${S.players[left[0]]?.nickname || "Someone"} is the last one standing!`;
+  if (everyone) return `Gameweek ${r.gw} settled. Everyone left went out, so they all survive to the next round.`;
+  return `Gameweek ${r.gw} settled. ${out.length} player${out.length === 1 ? "" : "s"} knocked out, ${left.length} still standing.`;
 }
 
 /* ---------------------------------------------------------------- forms */
@@ -632,30 +746,6 @@ $("#setForm").addEventListener("submit", async (ev) => {
   } catch (e) { m.className = "msg err"; m.textContent = "Settings didn't save. Try again."; }
 });
 ["#setSeason", "#setStart", "#setFee"].forEach((s) => $(s).addEventListener("input", (e) => (e.target.dataset.touched = "1")));
-if (!PREVIEW) {
-  // The hourly update runs on GitHub, so "Update now" opens it there.
-  const b = $("#syncBtn");
-  if (GH) {
-    const a = document.createElement("a");
-    a.className = "btn"; a.href = GH; a.target = "_blank"; a.rel = "noopener"; a.id = "syncLink";
-    a.textContent = "Update now on GitHub";
-    b.replaceWith(a);
-  } else b.hidden = true;
-  const sub = document.querySelector("#syncInfo")?.closest(".sheet")?.querySelector(".sub");
-  if (sub) sub.textContent = "These update every hour. To update straight away, open GitHub and tap Run workflow. Players are knocked out once every match in a round has finished.";
-}
-$("#syncBtn")?.addEventListener("click", async () => {
-  const b = $("#syncBtn"), m = $("#syncMsg");
-  b.disabled = true; m.className = "msg"; m.textContent = "Updating fixtures and results…";
-  try {
-    const r = (await call("syncNow")()).data;
-    const ko = (r.knockouts?.processed || []).map((x) => (x.winner ? `GW${x.gw} settled, we have a winner` : `GW${x.gw} settled, ${x.out} out`)).join(". ");
-    m.className = r.fixtures?.error ? "msg err" : "msg";
-    m.textContent = r.fixtures?.error ? `Results feed problem: ${r.fixtures.error}` : `Done. ${r.fixtures.roundsChanged} round${r.fixtures.roundsChanged === 1 ? "" : "s"} updated.${ko ? " " + ko + "." : ""}`;
-  } catch (e) { m.className = "msg err"; m.textContent = errText(e, "Update failed. Try again in a minute."); }
-  finally { b.disabled = false; }
-});
-
 /* ---------------------------------------------------------------- navigation */
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 function showTab(t) {
