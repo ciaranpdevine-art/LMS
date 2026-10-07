@@ -28,9 +28,12 @@ if (!PREVIEW && (location.hostname === "localhost" || location.hostname === "127
 if (PREVIEW) {
   const bar = document.createElement("div");
   bar.className = "preview";
-  bar.innerHTML = `<p><b>Preview mode.</b> The players, fixtures and results are samples, and nothing you do leaves this phone. To join, use code <b>DEMO-0001</b> with any nickname. The organiser passcode is <b>demo</b>.</p><button class="btn small ghost" type="button" id="resetPreview">Start again</button>`;
+  bar.innerHTML = `<p><b>Preview mode.</b> The players, fixtures and results are samples, and nothing you do leaves this phone. To join, use code <b>DEMO-0001</b> with any nickname. Once you've used it, it only works with that same nickname. The organiser passcode is <b>demo</b>.</p><button class="btn small ghost" type="button" id="resetPreview">Start again</button>`;
   document.querySelector(".wrap").prepend(bar);
   $("#resetPreview").onclick = () => F.resetPreview();
+  // Stop the phone autofilling a saved password into the preview passcode box.
+  const pass = $("#orgPass");
+  pass.type = "text"; pass.autocomplete = "off"; pass.setAttribute("autocapitalize", "none"); pass.value = "demo";
 }
 const call = (name) => httpsCallable(fns, name);
 

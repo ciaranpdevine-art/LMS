@@ -248,3 +248,15 @@ input:focus{border-color:var(--biro);outline:none}
   .pick .box svg{inset:-6px;width:36px;height:36px}
   .coupon-head h2{font-size:25px}
 }
+
+/* title sized to fit the real (wide) typeface on any phone */
+.title{font-stretch:125%;font-size:min(84px,calc((100vw - 40px) / 6.6));letter-spacing:-.02em}
+.title span{white-space:nowrap}
+.title span:last-child{margin-left:0}
+@media (max-width:420px){
+  .pick{font-stretch:75%;font-size:14.5px}
+  .pick .tn{overflow-wrap:normal;hyphens:manual;-webkit-hyphens:manual}
+  .coupon-head{flex-direction:column;align-items:flex-start;gap:6px}
+  .coupon-head .closes{text-align:left;display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline}
+  .coupon-head .closes b{display:inline}
+}
