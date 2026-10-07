@@ -13,7 +13,7 @@ const F = PREVIEW
 const {
   initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signOut,
   getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  getFunctions, httpsCallable,
+  getFunctions, httpsCallable, getDoc, writeBatch,
 } = F;
 
 const app = initializeApp(firebaseConfig);
@@ -35,7 +35,71 @@ if (PREVIEW) {
   const pass = $("#orgPass");
   pass.type = "text"; pass.autocomplete = "off"; pass.setAttribute("autocapitalize", "none"); pass.value = "demo";
 }
-const call = (name) => httpsCallable(fns, name);
+// Preview: stand-in server in preview.js. Real game: write straight to the database,
+// where the security rules (firestore.rules) do the checking.
+const call = (name) => (PREVIEW ? httpsCallable(fns, name) : async (data) => ({ data: await REAL[name](data || {}) }));
+const oops = (message) => Object.assign(new Error(message), { code: "app/friendly" });
+const REAL = {
+  async login({ code, nickname }) {
+    const c = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const nick = String(nickname || "").trim().replace(/\s+/g, " ");
+    if (c.length !== 8) throw oops("Codes are 8 characters, like ABCD-2345.");
+    if (!nick) throw oops("Enter a nickname.");
+    let snap;
+    try { snap = await getDoc(doc(db, "codes", c)); } catch { throw oops("Couldn't check your code. Check your connection and try again."); }
+    if (!snap.exists()) throw oops("That code isn't recognised. Check it with the organiser.");
+    const rec = snap.data(), session = { playerId: rec.playerId, code: c, at: serverTimestamp() };
+    if (!rec.claimed) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9 ._'-]{1,19}$/.test(nick)) throw oops("Nicknames are 2 to 20 characters, using letters, numbers, spaces and . _ - ' only.");
+      const start = S.rounds.find((r) => r.gw === startGw());
+      if (start && ms(start.deadline) < Date.now()) throw oops("This game has already kicked off, so new players can't join. Ask the organiser about the next one.");
+      const lower = nick.toLowerCase();
+      if ((await getDoc(doc(db, "nicknames", lower))).exists()) throw oops("Someone already has that nickname. Try another.");
+      const b = writeBatch(db);
+      b.set(doc(db, "sessions", S.uid), session);
+      b.set(doc(db, "players", rec.playerId), { nickname: nick, nicknameLower: lower, status: "alive", used: [], joinedAt: serverTimestamp() });
+      b.set(doc(db, "nicknames", lower), { playerId: rec.playerId });
+      b.update(doc(db, "codes", c), { claimed: true, nickname: nick, claimedAt: serverTimestamp() });
+      try { await b.commit(); } catch { throw oops("Couldn't join with that code. Try again, and if it keeps happening ask the organiser for a new code."); }
+    } else {
+      const ps = await getDoc(doc(db, "players", rec.playerId));
+      const p = ps.exists() ? ps.data() : null;
+      if (!p || p.status === "removed") throw oops("This code has been switched off. Speak to the organiser.");
+      if (p.nicknameLower !== nick.toLowerCase()) throw oops("That code is already in use. Enter the nickname you chose with it.");
+      try { await setDoc(doc(db, "sessions", S.uid), session); } catch { throw oops("Couldn't sign you in. Try again."); }
+    }
+    return { playerId: rec.playerId };
+  },
+  async adminLogin({ passcode }) {
+    const pass = String(passcode || "").trim();
+    try { await setDoc(doc(db, "admins", S.uid), { pass, at: serverTimestamp() }); }
+    catch { await new Promise((r) => setTimeout(r, 800)); throw oops("That passcode isn't right."); }
+    return { ok: true };
+  },
+  async makePick({ gw, team }) {
+    const pid = myId();
+    if (!pid) throw oops("Enter your code first.");
+    const r = S.rounds.find((x) => x.gw === gw);
+    if (!r || ms(r.deadline) <= Date.now()) throw oops("Picks for that gameweek have closed.");
+    if (!r.open) throw oops("Picks for this gameweek open within the hour. Try again shortly.");
+    const f = (r.fixtures || []).find((x) => x.home === team || x.away === team);
+    if (!f) throw oops("That team doesn't play this gameweek.");
+    const name = f.home === team ? f.homeName : f.awayName;
+    if (usedTeams(pid, gw).has(team)) throw oops(`You've already used ${name}.`);
+    try { await setDoc(doc(db, "rounds", String(gw), "picks", pid), { team, teamName: name, at: serverTimestamp() }); }
+    catch { throw oops("Your pick didn't save. Check your connection and try again."); }
+    return { gw, team, teamName: name };
+  },
+  async syncNow() {
+    throw oops("Results update by themselves every hour.");
+  },
+};
+// GitHub page where the organiser can run the hourly update straight away.
+const GH = (() => {
+  const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : null;
+  const repo = location.pathname.split("/").filter(Boolean)[0];
+  return owner && repo ? `https://github.com/${owner}/${repo}/actions/workflows/sync.yml` : null;
+})();
 
 const S = {
   uid: null, session: null, config: null, sync: null,
@@ -45,7 +109,8 @@ const S = {
   loaded: { config: false, players: false, rounds: false, session: false },
   view: "game", editingGw: null, lastShare: null,
 };
-const subs = { picks: {}, myPick: null, myPickGw: null, codes: null, session: null };
+const subs = { picks: {}, myPick: null, myPickGw: null, codes: null, session: null, admin: null };
+const amAdmin = () => !!(S.session?.admin || S.adminOk);
 
 /* ---------------------------------------------------------------- utils */
 const ms = (t) => (t == null ? NaN : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "string" ? Date.parse(t) : t.seconds * 1000);
@@ -153,16 +218,21 @@ function syncPickSubs() {
     }
   }
 }
+function watchCodes() {
+  if (!amAdmin() || subs.codes) return;
+  subs.codes = onSnapshot(collection(db, "codes"), (c) => { const o = {}; c.forEach((d) => (o[d.id] = d.data())); S.codes = o; renderOrg(); }, () => { subs.codes = null; });
+}
 function subscribeSession(uid) {
   if (subs.session) subs.session();
   subs.session = onSnapshot(doc(db, "sessions", uid), (s) => {
     S.session = s.exists() ? s.data() : {};
     S.loaded.session = true;
-    if (S.session.admin && !subs.codes) {
-      subs.codes = onSnapshot(collection(db, "codes"), (c) => { const o = {}; c.forEach((d) => (o[d.id] = d.data())); S.codes = o; renderOrg(); }, () => {});
-    }
-    syncPickSubs(); render();
+    watchCodes(); syncPickSubs(); render();
   }, () => { S.session = {}; S.loaded.session = true; render(); });
+  if (!PREVIEW) {
+    if (subs.admin) subs.admin();
+    subs.admin = onSnapshot(doc(db, "admins", uid), (s) => { S.adminOk = s.exists(); watchCodes(); render(); }, () => {});
+  }
 }
 
 /* ---------------------------------------------------------------- render */
@@ -177,7 +247,7 @@ function render() {
   $("#orgArea").hidden = !inOrg;
   $("#orgLink").hidden = inOrg;
   $("#backLink").hidden = !inOrg;
-  $("#signOutBtn").hidden = !(S.session?.playerId || S.session?.admin);
+  $("#signOutBtn").hidden = !(S.session?.playerId || amAdmin());
   const p = me();
   $("#whoBtn").hidden = !p;
   if (p) $("#whoBtn").textContent = p.nickname;
@@ -246,11 +316,13 @@ function renderRound() {
     rp.innerHTML = h + `<div class="sheet"><h2>Next round</h2><div class="empty">The next gameweek's fixtures appear here once they're confirmed.</div></div>`;
     return;
   }
-  const canPick = p.status === "alive" && !cfg().winner;
+  const waiting = !PREVIEW && !o.open; // the hourly update hasn't opened this round yet
+  const canPick = p.status === "alive" && !cfg().winner && !waiting;
   const myPick = S.myOpenPick?.gw === o.gw ? S.myOpenPick : null;
   const used = usedTeams(pid, o.gw);
   const k = fmtWhen(o.deadline);
-  const say = !canPick ? "You're not picking any more, but here are this week's games."
+  const say = waiting && p.status === "alive" ? "Picks for this gameweek open within the hour."
+    : !canPick ? "You're not picking any more, but here are this week's games."
     : myPick ? `You've gone with <span class="hand">${esc(myPick.teamName || teamName(o, myPick.team))}</span>. Tap another team to change your mind.`
     : (() => { const pl = getPlan()[o.gw]; return pl ? `You pencilled in <span class="hand">${esc(teamName(o, pl))}</span> for this week. Tap it to make it your pick.` : "Tap the team you think will win."; })();
   h += `<div class="coupon${canPick ? "" : " closed"}"><div class="coupon-head"><h2>Gameweek ${o.gw}</h2><div class="closes">Picks close<b>${esc(k.day)}, ${esc(k.time)}</b><span data-clock>${untilText(o.deadline)} to go</span></div></div><div class="coupon-say">${say}</div>`;
@@ -421,7 +493,7 @@ function renderPlan() {
 /* ---------------------------------------------------------------- organiser */
 function renderOrg() {
   if (S.view !== "org" || !ready()) return;
-  const isAdmin = !!S.session?.admin;
+  const isAdmin = amAdmin();
   $("#orgLogin").hidden = isAdmin; $("#orgTools").hidden = !isAdmin;
   if (!isAdmin) return;
 
@@ -560,7 +632,19 @@ $("#setForm").addEventListener("submit", async (ev) => {
   } catch (e) { m.className = "msg err"; m.textContent = "Settings didn't save. Try again."; }
 });
 ["#setSeason", "#setStart", "#setFee"].forEach((s) => $(s).addEventListener("input", (e) => (e.target.dataset.touched = "1")));
-$("#syncBtn").addEventListener("click", async () => {
+if (!PREVIEW) {
+  // The hourly update runs on GitHub, so "Update now" opens it there.
+  const b = $("#syncBtn");
+  if (GH) {
+    const a = document.createElement("a");
+    a.className = "btn"; a.href = GH; a.target = "_blank"; a.rel = "noopener"; a.id = "syncLink";
+    a.textContent = "Update now on GitHub";
+    b.replaceWith(a);
+  } else b.hidden = true;
+  const sub = document.querySelector("#syncInfo")?.closest(".sheet")?.querySelector(".sub");
+  if (sub) sub.textContent = "These update every hour. To update straight away, open GitHub and tap Run workflow. Players are knocked out once every match in a round has finished.";
+}
+$("#syncBtn")?.addEventListener("click", async () => {
   const b = $("#syncBtn"), m = $("#syncMsg");
   b.disabled = true; m.className = "msg"; m.textContent = "Updating fixtures and results…";
   try {

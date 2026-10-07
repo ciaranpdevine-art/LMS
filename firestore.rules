@@ -1,0 +1,136 @@
+rules_version = '2';
+
+// Last Man Standing: who can read and change what (Firebase free plan, no server code).
+// Players change the database directly, and these rules do the checking that a server would:
+// codes, unique nicknames, pick deadlines, teams already used and the organiser passcode.
+// The hourly GitHub job uses an admin key and isn't limited by these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    function sessionPath() { return /databases/$(database)/documents/sessions/$(uid()); }
+    function hasSession() { return signedIn() && exists(sessionPath()); }
+    function session() { return get(sessionPath()).data; }
+    function sessionAfter() { return getAfter(sessionPath()).data; }
+
+    function codeBefore(c) { return get(/databases/$(database)/documents/codes/$(c)).data; }
+    function codeAfter(c) { return getAfter(/databases/$(database)/documents/codes/$(c)).data; }
+    function player(pid) { return get(/databases/$(database)/documents/players/$(pid)).data; }
+    function playerAfter(pid) { return getAfter(/databases/$(database)/documents/players/$(pid)).data; }
+    function round(gw) { return get(/databases/$(database)/documents/rounds/$(gw)).data; }
+
+    // Organiser: has saved the current passcode under admins/<their sign-in id>.
+    function isAdmin() {
+      let mine = /databases/$(database)/documents/admins/$(uid());
+      return signedIn() && exists(mine)
+        && get(mine).data.pass == get(/databases/$(database)/documents/private/admin).data.pass;
+    }
+
+    // New players can join until the first gameweek kicks off.
+    function gameNotStarted() {
+      let cfg = get(/databases/$(database)/documents/config/game).data;
+      let start = /databases/$(database)/documents/rounds/$(string(cfg.startGw));
+      return !exists(start) || request.time < get(start).data.deadline;
+    }
+
+    // Written only by the GitHub job.
+    match /private/{docId} {
+      allow read, write: if false;
+    }
+
+    // Organiser sign-in: only works with the right passcode.
+    match /admins/{userId} {
+      allow read, delete: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['pass', 'at'])
+        && request.resource.data.pass == get(/databases/$(database)/documents/private/admin).data.pass;
+    }
+
+    // Game settings and last-update info.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Join codes. Knowing a code is what lets you in, so codes can be fetched one at a time
+    // but never listed, except by the organiser.
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list, create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.claimed == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed', 'nickname', 'claimedAt'])
+        && request.resource.data.claimed == true
+        && sessionAfter().code == code
+        && playerAfter(resource.data.playerId).nickname == request.resource.data.nickname
+      );
+    }
+
+    // Links a phone to a player. Needs a claimed code that belongs to that player.
+    match /sessions/{userId} {
+      allow read, delete: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['playerId', 'code', 'at'])
+        && request.resource.data.code is string
+        && codeAfter(request.resource.data.code).claimed == true
+        && codeAfter(request.resource.data.code).playerId == request.resource.data.playerId
+        && playerAfter(request.resource.data.playerId).status != 'removed';
+    }
+
+    // Players: everyone sees nicknames and who's still in. Created once, by claiming a code.
+    match /players/{pid} {
+      allow read: if true;
+      allow update: if isAdmin();
+      allow delete: if false;
+      allow create: if signedIn()
+        && sessionAfter().playerId == pid
+        && codeBefore(sessionAfter().code).playerId == pid
+        && codeBefore(sessionAfter().code).claimed == false
+        && request.resource.data.keys().hasOnly(['nickname', 'nicknameLower', 'status', 'used', 'joinedAt'])
+        && request.resource.data.status == 'alive'
+        && request.resource.data.used == []
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.matches("[A-Za-z0-9][A-Za-z0-9 ._'-]{1,19}")
+        && request.resource.data.nicknameLower == request.resource.data.nickname.lower()
+        && existsAfter(/databases/$(database)/documents/nicknames/$(request.resource.data.nicknameLower))
+        && gameNotStarted();
+    }
+
+    // One document per nickname, so no two players can share one.
+    match /nicknames/{name} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['playerId'])
+        && request.resource.data.playerId == sessionAfter().playerId
+        && playerAfter(sessionAfter().playerId).nicknameLower == name;
+      allow delete: if isAdmin();
+    }
+
+    // Fixtures and results: written by the GitHub job; the organiser can correct them.
+    match /rounds/{gw} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // Picks stay hidden until the deadline, except your own.
+      match /picks/{pid} {
+        allow read: if isAdmin()
+          || request.time > round(gw).deadline
+          || (hasSession() && session().playerId == pid);
+        allow create, update: if hasSession()
+          && session().playerId == pid
+          && round(gw).get('open', false) == true
+          && request.time < round(gw).deadline
+          && player(pid).status == 'alive'
+          && request.resource.data.keys().hasOnly(['team', 'teamName', 'at'])
+          && request.resource.data.team in round(gw).teams
+          && !(request.resource.data.team in player(pid).get('used', []))
+          && request.resource.data.teamName is string
+          && request.resource.data.teamName.size() < 40;
+        allow delete: if false;
+      }
+    }
+  }
+}
