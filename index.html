@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Last Man Standing</title>
+<meta name="description" content="Premier League last-player-standing game">
+<meta name="theme-color" content="#0f5c3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Last Man Standing">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="mast-top">
+      <span id="season">Premier League survivor game</span>
+      <button class="who" id="whoBtn" type="button" hidden></button>
+    </div>
+    <h1 class="title"><span>Last Man</span><span>Standing</span></h1>
+    <div class="stub" aria-label="Game summary">
+      <div><b id="sLeft">–</b><small>still in</small></div>
+      <div><b id="sPot">–</b><small>in the pot</small></div>
+      <div><b id="sRound">–</b><small>next round</small></div>
+      <div><b id="sClock">–</b><small>till picks close</small></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="winnerBanner" hidden></div>
+
+  <div class="sheet" id="bootPanel"><h2>Loading the game…</h2><p class="sub">Getting the fixtures.</p></div>
+
+  <!-- Join -->
+  <div class="ticket" id="joinPanel" hidden>
+    <h2>Got your code?</h2>
+    <p class="sub">Enter the code the organiser sent you and choose a nickname. That nickname is how everyone else will see you.</p>
+    <form id="joinForm" class="join" novalidate>
+      <label for="joinCode">Your code</label>
+      <input id="joinCode" class="serial" maxlength="9" required placeholder="ABCD-2345" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false">
+      <label for="joinName">Nickname</label>
+      <input id="joinName" class="biro-input" maxlength="20" required placeholder="Big Dave" autocomplete="nickname">
+      <button class="btn go" type="submit" id="joinBtn">Let me in</button>
+    </form>
+    <p class="hint">Back on a new phone? Use the same code and nickname as before.</p>
+    <div class="msg" id="joinMsg" role="status"></div>
+  </div>
+
+  <!-- Game -->
+  <div id="gameArea" hidden>
+    <section data-pane="play">
+      <div id="statusPanel"></div>
+      <div id="roundPanel"></div>
+    </section>
+
+    <section data-pane="table" hidden>
+      <div class="sheet">
+        <h2>The table</h2>
+        <p class="sub">Everyone's picks go up once each round's deadline passes.</p>
+        <div id="tableBody"></div>
+      </div>
+    </section>
+
+    <section data-pane="rules" hidden>
+      <div class="sheet rules">
+        <h2>House rules</h2>
+        <ul>
+          <li><b>Pick one team to win each gameweek.</b> Picks close at the first kick-off of the round, and you can change yours until then.</li>
+          <li><b>Win and you're through.</b> A draw or a defeat and you're out.</li>
+          <li><b>Every team once only.</b> Use a team and it's gone for the rest of the game.</li>
+          <li><b>Forget to pick and you're out.</b></li>
+          <li><b>Everyone left goes out in the same round?</b> Then they all survive to the next one.</li>
+          <li><b>Your match gets postponed?</b> You survive that round, and the team still counts as used.</li>
+          <li><b>Last one standing takes the pot.</b> No rebuys.</li>
+        </ul>
+        <h3>Keep it on your home screen</h3>
+        <p class="sub">On iPhone, open this page in Safari, tap Share, then Add to Home Screen. On Android, open it in Chrome, tap ⋮, then Add to Home screen.</p>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Sections">
+      <button data-tab="play" aria-selected="true" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z M8 8l8 8 M16 8l-8 8"/></svg>Coupon</button>
+      <button data-tab="table" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Table</button>
+      <button data-tab="rules" aria-selected="false" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z M9 10h6 M9 14h6"/></svg>Rules</button>
+    </nav>
+  </div>
+
+  <!-- Organiser -->
+  <div id="orgArea" hidden>
+    <div class="sheet" id="orgLogin">
+      <h2>Organiser</h2>
+      <form id="orgForm" class="row">
+        <div class="field"><label for="orgPass">Passcode</label><input id="orgPass" type="password" required autocomplete="current-password"></div>
+        <button class="btn" type="submit" id="orgBtn">Open organiser tools</button>
+      </form>
+      <div class="msg" id="orgMsg" role="status"></div>
+    </div>
+
+    <div id="orgTools" hidden>
+      <div class="sheet">
+        <h2>Give someone a code</h2>
+        <p class="sub">Once they've paid, create their code and send them the message. Each code works for one person.</p>
+        <form id="codeForm" class="row">
+          <div class="field"><label for="codeLabel">Who's it for? Only you see this</label><input id="codeLabel" maxlength="40" required placeholder="Dave from work"></div>
+          <button class="btn go" type="submit">Create code</button>
+        </form>
+        <div class="msg" id="codeMsg" role="status"></div>
+        <div id="codeShare"></div>
+      </div>
+
+      <div class="sheet"><h2>Codes</h2><div id="codeList"></div></div>
+      <div class="sheet"><h2>Players</h2><div id="playerList"></div></div>
+
+      <div class="sheet">
+        <h2>Fixtures and results</h2>
+        <p class="sub">These update every hour from the results feed. Players are knocked out once every match in a round has finished.</p>
+        <div class="row center"><button class="btn" id="syncBtn" type="button">Update now</button><span class="note" id="syncInfo"></span></div>
+        <div class="msg" id="syncMsg" role="status"></div>
+        <div id="roundAdmin"></div>
+      </div>
+
+      <div class="sheet">
+        <h2>Settings</h2>
+        <form id="setForm" class="row">
+          <div class="field"><label for="setSeason">Season</label><input id="setSeason" maxlength="20" placeholder="2026/27"></div>
+          <div class="field"><label for="setStart">First gameweek</label><input id="setStart" type="number" min="1" max="38" required></div>
+          <div class="field"><label for="setFee">Entry fee (£)</label><input id="setFee" type="number" min="0" step="1" required></div>
+          <button class="btn" type="submit">Save</button>
+        </form>
+        <p class="note">Set these before anyone joins. Changing the first gameweek once the game has started will muddle the table.</p>
+        <div class="msg" id="setMsg" role="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <button class="link" id="orgLink" type="button">Organiser</button>
+    <button class="link" id="backLink" type="button" hidden>Back to the game</button>
+    <button class="link" id="signOutBtn" type="button" hidden>Sign out on this phone</button>
+  </footer>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

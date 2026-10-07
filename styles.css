@@ -1,0 +1,250 @@
+/*
+  Last Man Standing: a football pools coupon on a mown pitch.
+  Turf-green page, pink coupon paper printed in maroon ink, your pick marked in blue biro,
+  knock-outs shown with a red rubber stamp. One look in light and dark: the turf is the ground.
+*/
+:root{
+  color-scheme: light;
+  --turf:#0f5c3a;
+  --turf-dark:#0b4a2e;
+  --coupon:#ffdbe3;
+  --coupon-rule:#eba2b4;
+  --ink:#5c1028;
+  --ink-soft:#8a4a5c;
+  --sheet:#fffcf6;
+  --sheet-rule:#e6dfd2;
+  --text:#22181b;
+  --muted:#6f6266;
+  --biro:#1f3fc2;
+  --stamp:#d3271c;
+  --win:#16804b;
+  --draw:#c48a00;
+  --chalk:#f4fbf6;
+
+  --display:"Anybody", "Arial Black", "Helvetica Neue", sans-serif;
+  --hand:"Gochi Hand", "Comic Sans MS", "Chalkboard SE", cursive;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--turf)}
+body{
+  margin:0;min-height:100vh;color:var(--text);
+  font-family:var(--display);font-stretch:100%;font-size:16px;line-height:1.45;
+  background:
+    repeating-linear-gradient(180deg,var(--turf) 0 72px,var(--turf-dark) 72px 144px);
+  background-attachment:fixed;
+}
+[hidden]{display:none!important}
+img{max-width:100%}
+h1,h2,h3{margin:0;text-wrap:balance;line-height:1}
+button{font:inherit;cursor:pointer;color:inherit}
+:focus-visible{outline:3px solid var(--biro);outline-offset:2px}
+.wrap{max-width:620px;margin:0 auto;padding-inline:16px;padding-block:4px 120px;display:grid;gap:18px}
+
+/* ---------- masthead ---------- */
+.mast{color:var(--chalk);padding:calc(18px + env(safe-area-inset-top,0px)) 16px 10px}
+.mast-in{max-width:620px;margin:0 auto}
+.mast-top{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px;font-stretch:90%;opacity:.9}
+.who{background:none;border:1.5px solid rgba(255,255,255,.5);border-radius:99px;padding:4px 12px;font-family:var(--hand);font-size:18px;line-height:1.1;color:var(--chalk)}
+.title{
+  margin:14px 0 18px;font-weight:900;font-stretch:150%;
+  font-size:clamp(46px,14.5vw,86px);line-height:.86;letter-spacing:-.02em;
+  color:var(--chalk);text-shadow:.06em .06em 0 var(--coupon);
+}
+.title span{display:block}
+.title span:last-child{font-style:italic;margin-left:.35em}
+
+/* ticket stub with perforated top edge */
+.stub{
+  position:relative;display:grid;grid-template-columns:repeat(4,1fr);
+  background:var(--coupon);color:var(--ink);padding:16px 6px 12px;
+  --hole:radial-gradient(circle at 8px 0,transparent 5px,#000 5.5px);
+  -webkit-mask:var(--hole) 0 0/16px 100% repeat-x;mask:var(--hole) 0 0/16px 100% repeat-x;
+}
+.stub>div{padding:0 8px;min-width:0;border-left:2px dashed var(--coupon-rule)}
+.stub>div:first-child{border-left:0}
+.stub b{display:block;font-weight:900;font-stretch:120%;font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stub small{font-size:12.5px;font-stretch:85%;color:var(--ink-soft)}
+@media (max-width:460px){
+  .stub{grid-template-columns:repeat(2,1fr);row-gap:10px}
+  .stub>div:nth-child(3){border-left:0}
+}
+
+/* ---------- paper surfaces ---------- */
+.sheet,.ticket,.coupon,.status{background:var(--sheet);padding:20px 18px;box-shadow:0 2px 0 rgba(0,0,0,.18),0 10px 24px -12px rgba(0,0,0,.45)}
+.sheet h2,.ticket h2{font-weight:900;font-stretch:130%;font-size:26px;color:var(--text)}
+.sheet h3{font-weight:800;font-stretch:120%;font-size:18px;margin-top:18px}
+.sub{color:var(--muted);margin:8px 0 0;font-stretch:95%}
+.note{font-size:14px;color:var(--muted)}
+.hint{font-size:14px;color:var(--ink-soft);margin:14px 0 0}
+.msg{margin-top:10px;font-weight:700}
+.msg:empty{display:none}
+.msg.err{color:var(--stamp)}
+
+/* ---------- forms ---------- */
+label{font-size:14px;font-weight:700;font-stretch:90%;color:var(--muted)}
+input,select{font:inherit;font-size:16px;padding:10px 12px;border:2px solid var(--sheet-rule);background:#fff;color:var(--text);border-radius:4px;width:100%}
+input:focus{border-color:var(--biro);outline:none}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:14px}
+.row.center{align-items:center}
+.field{display:flex;flex-direction:column;gap:4px;flex:1 1 170px;min-width:0}
+.btn{background:var(--text);color:var(--sheet);border:0;border-radius:4px;padding:12px 18px;font-weight:800;font-stretch:110%;font-size:15px}
+.btn.go{background:var(--stamp);color:#fff}
+.btn.ghost{background:transparent;color:var(--text);border:2px solid var(--sheet-rule)}
+.btn.small{padding:7px 11px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:active:not(:disabled){transform:translateY(1px)}
+
+/* join ticket */
+.ticket{background:var(--coupon);color:var(--ink);position:relative}
+.ticket h2{color:var(--ink)}
+.ticket .sub{color:var(--ink-soft)}
+.join{display:grid;gap:6px;margin-top:16px}
+.join label{color:var(--ink-soft);margin-top:6px}
+.serial{font-weight:900;font-stretch:140%;font-size:28px;letter-spacing:.06em;text-align:center;border:2px dashed var(--coupon-rule);background:var(--sheet);color:var(--ink);padding:12px}
+.biro-input{font-family:var(--hand);font-size:26px;color:var(--biro);background:transparent;border:0;border-bottom:2px solid var(--coupon-rule);border-radius:0;padding:6px 2px}
+.join .btn{margin-top:14px;font-size:17px;padding:14px}
+
+/* ---------- status card ---------- */
+.status{display:flex;align-items:center;gap:16px;justify-content:space-between}
+.status .say{min-width:0}
+.status .name{font-family:var(--hand);font-size:28px;color:var(--biro);line-height:1}
+.status h2{font-weight:900;font-stretch:125%;font-size:24px;margin-top:6px}
+.status p{margin:6px 0 0;color:var(--muted);font-stretch:95%}
+.stamp{
+  flex:none;display:grid;place-items:center;text-align:center;
+  width:92px;height:92px;border-radius:50%;border:4px double currentColor;
+  font-weight:900;font-stretch:130%;font-size:17px;line-height:1;letter-spacing:.02em;
+  transform:rotate(-12deg);color:var(--win);opacity:.92;
+}
+.stamp small{display:block;font-size:11px;font-weight:700;margin-top:3px}
+.stamp.out{color:var(--stamp)}
+.stamp.won{color:var(--draw)}
+
+/* ---------- coupon ---------- */
+.coupon{background:var(--coupon);color:var(--ink);padding:0;overflow:hidden}
+.coupon-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:18px 18px 12px;border-bottom:3px solid var(--ink)}
+.coupon-head h2{font-weight:900;font-stretch:140%;font-size:28px;color:var(--ink)}
+.coupon-head .closes{text-align:right;font-size:14px;font-stretch:90%;color:var(--ink-soft)}
+.coupon-head .closes b{display:block;color:var(--ink);font-size:16px;font-stretch:110%}
+.coupon-say{padding:10px 18px;font-size:15px;border-bottom:1px solid var(--coupon-rule)}
+.coupon-say .hand{font-family:var(--hand);font-size:22px;color:var(--biro)}
+.line{display:grid;grid-template-columns:26px 1fr 64px 1fr;align-items:stretch;border-bottom:1px solid var(--coupon-rule)}
+.line:last-child{border-bottom:0}
+.line .no{display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--ink-soft);border-right:1px solid var(--coupon-rule)}
+.line .ko{display:grid;place-content:center;text-align:center;font-weight:800;font-stretch:110%;font-size:16px;border-inline:1px solid var(--coupon-rule);font-variant-numeric:tabular-nums}
+.line .ko small{display:block;font-weight:500;font-size:11.5px;font-stretch:85%;color:var(--ink-soft)}
+.pick{
+  display:flex;align-items:center;gap:10px;min-width:0;background:none;border:0;
+  padding:12px 10px;text-align:left;color:var(--ink);font-weight:700;font-stretch:95%;font-size:15.5px;line-height:1.15;
+}
+.pick.away{flex-direction:row-reverse;text-align:right}
+.pick .tn{min-width:0;overflow-wrap:break-word;hyphens:auto;-webkit-hyphens:auto}
+.pick .box{flex:none;width:30px;height:30px;border:2px solid var(--ink);background:var(--sheet);position:relative;display:grid;place-items:center}
+.pick .box svg{position:absolute;inset:-6px;width:42px;height:42px;overflow:visible}
+.pick .box path{fill:none;stroke:var(--biro);stroke-width:3.2;stroke-linecap:round}
+.pick.picked .tn{color:var(--biro);text-decoration:underline;text-decoration-color:var(--biro);text-decoration-thickness:2px;text-underline-offset:3px}
+.pick.used{color:var(--ink-soft)}
+.pick.used .tn{text-decoration:line-through;text-decoration-thickness:2px}
+.pick.used .box{border-color:var(--coupon-rule);background:transparent}
+.pick .gw{font-family:var(--hand);font-size:14px;color:var(--ink-soft)}
+.pick:disabled{cursor:default}
+.pick:not(:disabled):hover .box{background:#fff;border-width:3px}
+.coupon.closed .pick:not(.picked){opacity:.75}
+@media (prefers-reduced-motion:no-preference){
+  .pick.fresh .box path{stroke-dasharray:60;stroke-dashoffset:60;animation:draw .28s ease-out forwards}
+  .pick.fresh .box path+path{animation-delay:.22s}
+  @keyframes draw{to{stroke-dashoffset:0}}
+}
+@media (max-width:420px){
+  .line{grid-template-columns:22px 1fr 56px 1fr}
+  .pick{gap:7px;padding:11px 7px;font-size:14.5px}
+  .pick .box{width:26px;height:26px}
+  .pick .box svg{inset:-6px;width:38px;height:38px}
+}
+.coupon-foot{padding:10px 18px 14px;border-top:3px solid var(--ink)}
+.coupon-foot:empty{display:none}
+
+/* in-play strip */
+.inplay{background:var(--sheet);padding:14px 18px;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.inplay .what{min-width:0}
+.inplay b{display:block;font-weight:900;font-stretch:120%}
+.inplay span{color:var(--muted);font-size:15px}
+
+/* result tickets */
+.res{display:inline-grid;place-items:center;min-width:42px;padding:3px 6px;font-weight:800;font-stretch:110%;font-size:13px;color:#fff;background:var(--muted);border-radius:3px;white-space:nowrap}
+.res.W{background:var(--win)}
+.res.D{background:var(--draw)}
+.res.L,.res.N,.res.X{background:var(--stamp)}
+.res.P{background:transparent;color:var(--muted);border:1.5px dashed var(--muted)}
+.res.q{background:transparent;color:var(--text);border:1.5px solid var(--sheet-rule)}
+
+/* ---------- table ---------- */
+.board{list-style:none;margin:14px 0 0;padding:0;display:grid}
+.board li{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--sheet-rule);position:relative}
+.board li:last-child{border-bottom:0}
+.board .nm{font-family:var(--hand);font-size:24px;line-height:1.05;color:var(--biro);min-width:0;overflow-wrap:anywhere}
+.board .you{font-family:var(--display);font-size:12px;color:var(--muted);margin-left:6px}
+.board .hist{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px}
+.board .tag{font-weight:800;font-stretch:115%;font-size:13px;color:var(--win)}
+.board li.out .nm{color:var(--muted);text-decoration:line-through;text-decoration-thickness:2px}
+.board li.out .tag{color:var(--stamp);border:2.5px solid var(--stamp);padding:2px 7px;transform:rotate(-6deg);border-radius:3px}
+.board li.winner .tag{color:var(--draw)}
+.board-note{font-size:14px;color:var(--muted);margin:10px 0 0}
+
+/* ---------- rules ---------- */
+.rules ul{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:12px}
+.rules li{padding-left:30px;position:relative}
+.rules li::before{content:"";position:absolute;left:2px;top:3px;width:16px;height:16px;border:2px solid var(--text);background:
+  linear-gradient(45deg,transparent 44%,var(--biro) 44% 56%,transparent 56%),
+  linear-gradient(-45deg,transparent 44%,var(--biro) 44% 56%,transparent 56%)}
+
+/* ---------- winner banner ---------- */
+.banner{background:var(--coupon);color:var(--ink);padding:20px 18px;text-align:center;box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.banner h2{font-weight:900;font-stretch:140%;font-size:30px}
+.banner .hand{font-family:var(--hand);font-size:34px;color:var(--biro);display:block;margin-bottom:4px}
+
+/* ---------- bottom tabs ---------- */
+.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;justify-content:center;gap:4px;
+  background:var(--sheet);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -6px 20px -10px rgba(0,0,0,.5);
+}
+.tabs button{flex:0 1 140px;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;padding:6px 8px;border-radius:6px;font-weight:700;font-stretch:95%;font-size:13px;color:var(--muted)}
+.tabs svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tabs button[aria-selected="true"]{color:var(--biro);background:#eef1ff}
+
+/* ---------- organiser lists ---------- */
+.list{display:grid;gap:8px;margin-top:12px}
+.item{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;border:2px solid var(--sheet-rule);border-radius:4px;padding:10px 12px;background:#fff}
+.item .who-l{min-width:0;flex:1 1 180px}
+.item .who-l b{display:block}
+.item .row{margin-top:0}
+.mono{font-weight:900;font-stretch:130%;letter-spacing:.05em}
+.empty{padding:18px;border:2px dashed var(--sheet-rule);border-radius:4px;color:var(--muted);text-align:center;margin-top:12px}
+.share{background:var(--coupon);color:var(--ink);padding:14px;margin-top:10px;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+.score{width:58px;text-align:center;padding:8px 4px}
+
+/* ---------- footer ---------- */
+.foot{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;padding-top:8px}
+.link{background:none;border:0;color:var(--chalk);opacity:.8;text-decoration:underline;text-underline-offset:3px;font-size:14px;padding:4px}
+[data-pane]{display:grid;gap:18px}
+#statusPanel:empty,#roundPanel:empty{display:none}
+#roundPanel{display:grid;gap:18px}
+.who{white-space:nowrap}
+.line .ko small{white-space:nowrap}
+.line{grid-template-columns:26px 1fr 72px 1fr}
+@media (max-width:420px){.line{grid-template-columns:22px 1fr 66px 1fr}}
+
+/* preview-mode notice */
+.preview{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between;background:#fff6c8;color:#3d3200;padding:12px 14px;border:2px dashed #c9a800;border-radius:4px}
+.preview p{margin:0;font-size:14.5px;flex:1 1 220px}
+.preview .btn.ghost{border-color:#c9a800;color:#3d3200;background:#fffbe3}
+.coupon-head{flex-wrap:wrap}
+.coupon-head h2,.coupon-head .closes b{white-space:nowrap}
+@media (max-width:420px){
+  .line{grid-template-columns:20px 1fr 62px 1fr}
+  .pick{gap:6px;padding:11px 6px;font-size:14px;font-stretch:85%}
+  .pick .box{width:24px;height:24px}
+  .pick .box svg{inset:-6px;width:36px;height:36px}
+  .coupon-head h2{font-size:25px}
+}
