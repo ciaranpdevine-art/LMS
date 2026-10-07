@@ -1,10 +1,10 @@
-// Paste your Firebase web app settings here (setup guide, step 6).
-// Firebase console > Project settings > General > Your apps > SDK setup and configuration > Config
+// Firebase settings for Last Man Standing. These only identify the project and are safe to publish;
+// the database rules (firestore.rules) protect the data.
 export const firebaseConfig = {
-  apiKey: "PASTE-YOUR-API-KEY",
-  authDomain: "YOUR-PROJECT-ID.firebaseapp.com",
-  projectId: "YOUR-PROJECT-ID",
-  storageBucket: "YOUR-PROJECT-ID.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "PASTE-YOUR-APP-ID",
+  apiKey: "AIzaSyC-Q0umosa7Ufgv9sgtL4agdD6dEZA-GkM",
+  authDomain: "last-man-standing-661d6.firebaseapp.com",
+  projectId: "last-man-standing-661d6",
+  storageBucket: "last-man-standing-661d6.firebasestorage.app",
+  messagingSenderId: "478776403782",
+  appId: "1:478776403782:web:8bd16341bf831c8a722747",
 };
