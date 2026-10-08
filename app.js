@@ -261,6 +261,8 @@ function renderBoard() {
   $("#season").textContent = c.season ? `Premier League survivor game · ${c.season}` : "Premier League survivor game";
   $("#sLeft").textContent = n ? `${alive}/${n}` : "0";
   $("#sPot").textContent = "£" + ((Number(c.entryFee) || 0) * n).toLocaleString("en-GB");
+  const fee = Number(c.entryFee) || 0;
+  $("#joinFee").textContent = fee ? ` (£${fee.toLocaleString("en-GB")})` : "";
   const o = openRound();
   $("#sRound").textContent = o ? `GW${o.gw}` : "—";
   $("#sClock").textContent = o ? untilText(o.deadline) : "—";

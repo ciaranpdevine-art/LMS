@@ -344,3 +344,6 @@ input:focus{border-color:var(--biro);outline:none}
 .serial:focus,.biro-input:focus{border-color:var(--biro)}
 .biro-input{border-bottom-color:var(--sheet-rule)}
 .stub{background:#fbe8ed}
+.howto{margin-top:18px;padding:14px 16px;background:#f6f2ea;border-left:4px solid var(--coupon-rule);border-radius:3px}
+.howto h3{font-weight:800;font-stretch:115%;font-size:17px;color:var(--ink);margin:0}
+.howto p{margin:6px 0 0;font-size:15px;color:var(--text)}
