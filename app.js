@@ -112,7 +112,7 @@ const subs = { picks: {}, myPick: null, myPickGw: null, codes: null, session: nu
 const amAdmin = () => !!(S.session?.admin || S.adminOk);
 
 /* ---------------------------------------------------------------- utils */
-const ms = (t) => (t == null ? NaN : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "string" ? Date.parse(t) : t.seconds * 1000);
+const ms = (t) => (t == null ? NaN : t instanceof Date ? t.getTime() : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "string" ? Date.parse(t) : t.seconds * 1000);
 const fmtWhen = (t) => {
   const d = new Date(ms(t));
   return {
@@ -636,7 +636,7 @@ function editRound(gw) {
   const started = ms(r.deadline) <= Date.now();
   const fx = [...(r.fixtures || [])].sort((a, b) => ms(a.kickoff) - ms(b.kickoff));
   const cur = (f) => (f.status === "postponed" ? "P" : f.result || (f.status === "finished" && f.hg != null ? (f.hg > f.ag ? "H" : f.hg === f.ag ? "D" : "A") : ""));
-  el.innerHTML = `<h3>Gameweek ${gw}</h3><p class="note">${started ? "Pick the result of each match once it's finished. When every match has a result, players are knocked out automatically." : "Picks close at the first kick-off. Change a time here if a match moves."}</p>
+  el.innerHTML = `<h3>Gameweek ${gw}</h3><p class="note">${started ? "Pick the result of each match once it's finished. When every match has a result, players are knocked out automatically. If the first kick-off was set too early by mistake, change it back to the right time and save to reopen picks." : "Picks close at the first kick-off. Change a time here if a match moves."}</p>
     <div class="list">${fx.map((f) => `
       <div class="item res-item" data-id="${esc(f.id)}"><div class="who-l"><b>${esc(f.homeName)} v ${esc(f.awayName)}</b>
         <label class="kick">Kick-off (UK time)<input type="datetime-local" data-k="${esc(f.id)}" value="${esc(isoToLondon(f.kickoff))}"></label></div>
@@ -658,13 +658,18 @@ function editRound(gw) {
       return { ...f, kickoff, status, result: pick && pick !== "P" ? pick : null, hg: null, ag: null };
     });
     const upd = { fixtures };
-    if (!started) upd.deadline = firstKick(fixtures);
+    // The deadline follows the first kick-off. Once it has passed it stays put, unless the organiser
+    // moves every kick-off back into the future before any result is in, which reopens picks.
+    const newDl = firstKick(fixtures);
+    const reopen = started && newDl.getTime() > Date.now() && !fixtures.some((f) => f.status === "finished");
+    if (!started || reopen) upd.deadline = newDl;
     save.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
     try {
       await updateDoc(doc(db, "rounds", String(gw)), upd);
       const fresh = { ...r, ...upd };
       let note = "Saved.";
-      if (started && fixtures.every(resolved)) note = await settleRound(fresh);
+      if (reopen) note = `Saved. Picks for Gameweek ${gw} are open again until ${fmtWhen(newDl).day} ${fmtWhen(newDl).time}.`;
+      else if (started && fixtures.every(resolved)) note = await settleRound(fresh);
       else if (started) note = `Saved. ${fixtures.filter((f) => !resolved(f)).length} match${fixtures.filter((f) => !resolved(f)).length === 1 ? "" : "es"} still to go before anyone is knocked out.`;
       S.editingGw = null; renderOrg();
       $("#syncMsg").className = "msg"; $("#syncMsg").textContent = note;
