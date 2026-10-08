@@ -360,35 +360,12 @@ async function makePick(gw, team, btn) {
   }
 }
 
-function renderTable() {
-  const el = $("#tableBody"), list = countedPlayers();
-  if (!list.length) { el.innerHTML = `<div class="empty">Nobody's joined yet.</div>`; return; }
-  const now = Date.now(), shown = rounds().filter((r) => ms(r.deadline) <= now), w = cfg().winner;
-  list.sort(([, pa], [, pb]) => {
-    const oa = pa.status === "alive" ? 999 : pa.outGw || 0, ob = pb.status === "alive" ? 999 : pb.outGw || 0;
-    return ob - oa || pa.nickname.localeCompare(pb.nickname);
-  });
-  const rows = list.map(([id, p]) => {
-    const out = p.status === "out", cls = w === id ? "winner" : out ? "out" : "";
-    const tag = w === id ? "Winner" : out ? `Out GW${esc(p.outGw)}` : "Standing";
-    const hist = shown.map((r) => {
-      if (out && r.gw > p.outGw) return "";
-      if (r.processed && r.results && !r.results[id]) return "";
-      const pk = pickOf(r.gw, id), res = resultOf(r, id);
-      if (!pk) return `<span class="res N" title="Gameweek ${r.gw}: no pick">GW${r.gw} –</span>`;
-      return `<span class="res ${res === "?" ? "q" : res}" title="Gameweek ${r.gw}: ${esc(pk.teamName || pk.team)}, ${esc(RES_WORD[res])}">${esc(pk.team)}</span>`;
-    }).join("");
-    return `<li class="${cls}"><span class="nm">${esc(p.nickname)}${id === myId() ? `<span class="you">you</span>` : ""}</span><span class="tag">${tag}</span>${hist ? `<div class="hist">${hist}</div>` : ""}</li>`;
-  }).join("");
-  const notes = shown.filter((r) => r.everyoneSurvived).map((r) => `<p class="board-note">Gameweek ${r.gw}: everyone left went out, so everyone survived.</p>`).join("");
-  el.innerHTML = `<ul class="board">${rows}</ul>${notes}`;
-}
-
-function renderHistory() {
-  const pid = myId(), p = me(), el = $("#historyBody"), left = $("#teamsLeft");
-  if (!pid || !p) return;
-  const now = Date.now(), o = openRound();
-  const rs = rounds().filter((r) => ms(r.deadline) <= now || (o && r.gw === o.gw));
+// Picks list for one player. Other players' picks only appear once each deadline has passed.
+function historyItems(pid) {
+  const p = S.players[pid];
+  if (!p) return [];
+  const now = Date.now(), o = openRound(), self = pid === myId();
+  const rs = rounds().filter((r) => ms(r.deadline) <= now || (self && o && r.gw === o.gw));
   const rows = [];
   for (const r of [...rs].reverse()) {
     if (r.processed && r.results && !r.results[pid]) continue; // joined after this round
@@ -410,14 +387,24 @@ function renderHistory() {
       : `<span class="res ${res}">${res === "W" ? "Won" : res === "D" ? "Drew" : res === "L" ? "Lost" : res === "P" ? "Postponed" : esc(RES_WORD[res])}</span>`;
     rows.push(`<li><span class="gwk">GW${r.gw}</span><div class="mp"><b class="hand">${esc(pk.teamName || teamName(r, pk.team))}</b><span>${opp}${score ? `, ${score}` : when ? `, ${esc(when)}` : ""}</span></div>${badge}</li>`);
   }
-  el.innerHTML = rows.length ? `<ul class="mine">${rows.join("")}</ul>` : `<div class="empty">Your picks will build up here, week by week. Make your first one on the Coupon tab.</div>`;
-
-  // every team seen in any fixture this season
+  return rows;
+}
+// Every team that appears in the fixtures, A to Z.
+function allTeams() {
   const all = new Map();
   for (const r of S.rounds) for (const f of r.fixtures || []) { all.set(f.home, f.homeName); all.set(f.away, f.awayName); }
+  return [...all.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+function renderHistory() {
+  const pid = myId(), p = me(), el = $("#historyBody"), left = $("#teamsLeft");
+  if (!pid || !p) return;
+  const o = openRound();
+  const rows = historyItems(pid);
+  el.innerHTML = rows.length ? `<ul class="mine">${rows.join("")}</ul>` : `<div class="empty">Your picks will build up here, week by week. Make your first one on the Coupon tab.</div>`;
   const used = usedTeams(pid, o ? o.gw : Infinity);
   const current = o && S.myOpenPick?.gw === o.gw ? S.myOpenPick.team : null;
-  const teams = [...all.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const teams = allTeams();
   const avail = teams.filter(([c]) => !used.has(c)).length;
   const planned = new Map(Object.entries(getPlan()).map(([g, t]) => [t, g]));
   left.innerHTML = `<p class="note">${avail} of ${teams.length} still available.${planned.size ? ` ${planned.size} pencilled in on your plan.` : ""}</p><div class="chips">${teams.map(([c, n]) => {
@@ -425,6 +412,56 @@ function renderHistory() {
     return `<span class="chip-t${u ? " gone" : ""}${c === current ? " now" : ""}${pl ? " planned" : ""}">${esc(n)}${u ? `<small>GW${used.get(c)}</small>` : c === current ? "<small>this week</small>" : pl ? `<small>plan GW${pl}</small>` : ""}</span>`;
   }).join("")}</div>`;
 }
+
+// Tap a player on the table to see their picks and the teams they've got left.
+function playerDetail(pid) {
+  const p = S.players[pid], o = openRound(), mine = myId(), self = pid === mine;
+  const rows = historyItems(pid);
+  const used = usedTeams(pid, Infinity);
+  const teams = allTeams();
+  const left = teams.filter(([c]) => !used.has(c));
+  const myUsed = mine ? usedTeams(mine, o ? o.gw : Infinity) : null;
+  const meAlive = me()?.status === "alive";
+  const both = !self && meAlive && p.status === "alive" && myUsed ? left.filter(([c]) => !myUsed.has(c)) : null;
+  const chips = teams.map(([c, n]) => {
+    const u = used.has(c), shared = both && both.length <= 10 && both.some(([x]) => x === c);
+    return `<span class="chip-t${u ? " gone" : ""}${shared ? " shared" : ""}">${esc(n)}${u ? `<small>GW${used.get(c)}</small>` : ""}</span>`;
+  }).join("");
+  return `<div class="pdetail">
+    <h4>${self ? "Your picks" : `${esc(p.nickname)}'s picks`}</h4>
+    ${rows.length ? `<ul class="mine">${rows.join("")}</ul>` : `<p class="note">No picks to show yet. Picks appear once each deadline passes.</p>`}
+    <h4>Teams left <span class="note">${left.length} of ${teams.length}</span></h4>
+    <div class="chips">${chips}</div>
+    ${both ? `<p class="note both">${!both.length ? "You don't have any teams left in common." : both.length > 10 ? `You both still have ${both.length} of the same teams left.` : `<b>You both still have ${both.length}:</b> ${esc(both.map(([, n]) => n).join(", "))}. They're outlined in blue.`}</p>` : ""}
+    ${!self && o ? `<p class="note">${esc(p.nickname)}'s Gameweek ${o.gw} pick stays hidden until picks close.</p>` : ""}
+  </div>`;
+}
+
+function renderTable() {
+  const el = $("#tableBody"), list = countedPlayers();
+  if (!list.length) { el.innerHTML = `<div class="empty">Nobody's joined yet.</div>`; return; }
+  const now = Date.now(), shown = rounds().filter((r) => ms(r.deadline) <= now), w = cfg().winner;
+  list.sort(([, pa], [, pb]) => {
+    const oa = pa.status === "alive" ? 999 : pa.outGw || 0, ob = pb.status === "alive" ? 999 : pb.outGw || 0;
+    return ob - oa || pa.nickname.localeCompare(pb.nickname);
+  });
+  const rows = list.map(([id, p]) => {
+    const out = p.status === "out", cls = w === id ? "winner" : out ? "out" : "", open = S.openPlayer === id;
+    const tag = w === id ? "Winner" : out ? `Out GW${esc(p.outGw)}` : "Standing";
+    const hist = shown.map((r) => {
+      if (out && r.gw > p.outGw) return "";
+      if (r.processed && r.results && !r.results[id]) return "";
+      const pk = pickOf(r.gw, id), res = resultOf(r, id);
+      if (!pk) return `<span class="res N" title="Gameweek ${r.gw}: no pick">GW${r.gw} –</span>`;
+      return `<span class="res ${res === "?" ? "q" : res}" title="Gameweek ${r.gw}: ${esc(pk.teamName || pk.team)}, ${esc(RES_WORD[res])}">${esc(pk.team)}</span>`;
+    }).join("");
+    return `<li class="${cls}${open ? " open" : ""}"><button class="prow" type="button" data-player="${esc(id)}" aria-expanded="${open}"><span class="nm">${esc(p.nickname)}${id === myId() ? `<span class="you">you</span>` : ""}</span><span class="tag">${tag}</span><span class="chev" aria-hidden="true"></span></button>${hist ? `<div class="hist">${hist}</div>` : ""}${open ? playerDetail(id) : ""}</li>`;
+  }).join("");
+  const notes = shown.filter((r) => r.everyoneSurvived).map((r) => `<p class="board-note">Gameweek ${r.gw}: everyone left went out, so everyone survived.</p>`).join("");
+  el.innerHTML = `<ul class="board">${rows}</ul>${notes}`;
+  el.querySelectorAll("[data-player]").forEach((b) => (b.onclick = () => { S.openPlayer = S.openPlayer === b.dataset.player ? null : b.dataset.player; renderTable(); }));
+}
+
 
 /* ---------------------------------------------------------------- plan ahead (saved on this phone) */
 const planKey = () => `lms-plan-${myId()}`;
