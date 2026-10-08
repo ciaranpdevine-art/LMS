@@ -359,3 +359,6 @@ input:focus{border-color:var(--biro);outline:none}
 .pdetail .mine li{padding:8px 0}
 .pdetail .note{margin:8px 0 0}
 .chip-t.shared{border-color:var(--biro);box-shadow:inset 0 0 0 1px var(--biro)}
+.hearts{color:var(--stamp);letter-spacing:1px;font-size:.95em;white-space:nowrap}
+.hearts i{font-style:normal;color:var(--sheet-rule)}
+.stamp.warn{color:var(--draw)}

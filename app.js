@@ -159,6 +159,10 @@ async function copyText(text, btn) {
 
 /* ---------------------------------------------------------------- game state */
 function cfg() { return S.config || {}; }
+const livesEach = () => Math.max(1, Math.min(3, Number(cfg().lives) || 1));
+const livesLeft = (p) => Math.max(0, livesEach() - (Number(p?.lost) || 0));
+const hearts = (p) => livesEach() > 1 ? `<span class="hearts" aria-label="${livesLeft(p)} of ${livesEach()} lives left">${"♥".repeat(livesLeft(p))}<i>${"♥".repeat(livesEach() - livesLeft(p))}</i></span>` : "";
+const gameStarted = () => { const r = S.rounds.find((x) => x.gw === startGw()); return !!r && ms(r.deadline) <= Date.now(); };
 function startGw() { return Number(cfg().startGw) || 1; }
 function rounds() { return S.rounds.filter((r) => r.gw >= startGw()).sort((a, b) => a.gw - b.gw); }
 function openRound() { const now = Date.now(); return rounds().find((r) => ms(r.deadline) > now) || null; }
@@ -253,7 +257,7 @@ function render() {
   if (inOrg) { $("#joinPanel").hidden = true; $("#gameArea").hidden = true; renderOrg(); return; }
   if (!p) { $("#joinPanel").hidden = false; $("#gameArea").hidden = true; return; }
   $("#joinPanel").hidden = true; $("#gameArea").hidden = false;
-  renderStatus(); renderRound(); renderTable(); renderHistory(); renderPlan();
+  renderStatus(); renderRules(); renderRound(); renderTable(); renderHistory(); renderPlan();
 }
 
 function renderBoard() {
@@ -278,6 +282,13 @@ function renderWinner() {
   b.innerHTML = `<span class="hand">${esc(S.players[w]?.nickname || "Someone")}</span><h2>Last one standing</h2><p class="sub">Takes the £${((Number(cfg().entryFee) || 0) * n).toLocaleString("en-GB")} pot after Gameweek ${esc(cfg().wonGw)}.</p>`;
 }
 
+function renderRules() {
+  const n = livesEach(), el = $("#ruleLives");
+  if (!el) return;
+  el.innerHTML = n > 1
+    ? `<b>Win and you're through.</b> A draw, a defeat or a missed pick costs you a life. Everyone starts with ${n} lives; lose them all and you're out.`
+    : `<b>Win and you're through.</b> A draw or a defeat and you're out. Forget to pick and you're out too.`;
+}
 function renderStatus() {
   const p = me(), sp = $("#statusPanel"), w = cfg().winner;
   const others = countedPlayers().filter(([id, x]) => x.status === "alive" && id !== myId()).length;
@@ -296,6 +307,13 @@ function renderStatus() {
     stamp = `<div class="stamp">STILL<br>IN</div>`;
     head = survived ? `Survived ${survived} round${survived > 1 ? "s" : ""}` : "You're in";
     line = `${others} other${others === 1 ? "" : "s"} still in.`;
+    if (livesEach() > 1) {
+      const left = livesLeft(p);
+      const last = rounds().filter((r) => r.processed && r.results?.[myId()]?.lifeLost).pop();
+      const lostNote = last ? (() => { const x = last.results[myId()]; return x.team ? `${esc(teamName(last, x.team))} ${x.res === "D" ? "drew" : "lost"} in Gameweek ${last.gw}, so you lost a life. ` : `No pick in Gameweek ${last.gw}, so you lost a life. `; })() : "";
+      line = `${lostNote}${hearts(p)} ${left} of ${livesEach()} lives left. ${line}`;
+      if (left === 1 && livesEach() > 1) stamp = `<div class="stamp warn">LAST<br>LIFE</div>`;
+    }
   }
   sp.innerHTML = `<div class="status"><div class="say"><div class="name">${esc(p.nickname)}</div><h2>${head}</h2><p>${line}</p></div>${stamp}</div>`;
 }
@@ -447,7 +465,7 @@ function renderTable() {
   });
   const rows = list.map(([id, p]) => {
     const out = p.status === "out", cls = w === id ? "winner" : out ? "out" : "", open = S.openPlayer === id;
-    const tag = w === id ? "Winner" : out ? `Out GW${esc(p.outGw)}` : "Standing";
+    const tag = w === id ? "Winner" : out ? `Out GW${esc(p.outGw)}` : livesEach() > 1 ? `${hearts(p)} Standing` : "Standing";
     const hist = shown.map((r) => {
       if (out && r.gw > p.outGw) return "";
       if (r.processed && r.results && !r.results[id]) return "";
@@ -561,6 +579,10 @@ function renderOrg() {
   if (S.editingGw == null) renderRoundAdmin();
 
   // settings (fill once, don't overwrite while typing)
+  const lv = $("#setLives");
+  if (document.activeElement !== lv && !lv.dataset.touched) lv.value = String(livesEach());
+  lv.disabled = gameStarted();
+  $("#livesNote").textContent = gameStarted() ? "Lives are locked now the game has started." : "Choose before the first kick-off. 1 means straight knock-out.";
   for (const [id, key] of [["#setSeason", "season"], ["#setStart", "startGw"], ["#setFee", "entryFee"]]) {
     const el = $(id); if (document.activeElement !== el && !el.dataset.touched) el.value = cfg()[key] ?? (key === "startGw" ? "" : "");
   }
@@ -724,17 +746,23 @@ async function settleRound(r) {
   const counted = Object.entries(S.players).filter(([, p]) => p.status !== "removed");
   const alive = counted.filter(([, p]) => p.status === "alive").map(([id]) => id);
   const results = {}, fallen = [];
+  const lives = livesEach();
   for (const id of alive) {
     const team = picks[id] || null, res = outcome(r, team);
     results[id] = { team, res };
     if (!(res === "W" || res === "P")) fallen.push(id);
   }
-  const everyone = alive.length > 0 && fallen.length === alive.length;
-  const out = everyone ? [] : fallen;
+  // Players on their last life go out. If that would knock out everyone left, nobody loses anything.
+  const lastLife = fallen.filter((id) => (Number(S.players[id]?.lost) || 0) + 1 >= lives);
+  const everyone = alive.length > 0 && lastLife.length === alive.length;
+  const out = everyone ? [] : lastLife;
+  const lifeLost = everyone ? [] : fallen;
+  lifeLost.forEach((id) => (results[id].lifeLost = true));
   const b = writeBatch(db);
   for (const [id, p] of counted) {
     const upd = {};
     if (picks[id]) upd.used = [...new Set([...(p.used || []), picks[id]])];
+    if (lifeLost.includes(id)) upd.lost = (Number(p.lost) || 0) + 1;
     if (out.includes(id)) Object.assign(upd, { status: "out", outGw: r.gw, outResult: results[id] });
     if (Object.keys(upd).length) b.update(doc(db, "players", id), upd);
   }
@@ -744,7 +772,9 @@ async function settleRound(r) {
   await b.commit();
   if (left.length === 1 && counted.length > 1) return `Gameweek ${r.gw} settled. ${S.players[left[0]]?.nickname || "Someone"} is the last one standing!`;
   if (everyone) return `Gameweek ${r.gw} settled. Everyone left went out, so they all survive to the next round.`;
-  return `Gameweek ${r.gw} settled. ${out.length} player${out.length === 1 ? "" : "s"} knocked out, ${left.length} still standing.`;
+  const lostOnly = lifeLost.length - out.length;
+  const koText = out.length ? `${out.length} player${out.length === 1 ? "" : "s"} knocked out` : "Nobody knocked out";
+  return `Gameweek ${r.gw} settled. ${koText}${lostOnly ? `, ${lostOnly} lost a life` : ""}, ${left.length} still standing.`;
 }
 
 /* ---------------------------------------------------------------- forms */
@@ -789,12 +819,14 @@ $("#setForm").addEventListener("submit", async (ev) => {
   if (!(startGw_ >= 1 && startGw_ <= 38)) { m.className = "msg err"; m.textContent = "First gameweek must be between 1 and 38."; return; }
   if (!(entryFee >= 0)) { m.className = "msg err"; m.textContent = "Entry fee must be a number."; return; }
   try {
-    await setDoc(doc(db, "config", "game"), { startGw: startGw_, entryFee, season }, { merge: true });
+    const upd = { startGw: startGw_, entryFee, season };
+    if (!gameStarted()) upd.lives = Number($("#setLives").value) || 1;
+    await setDoc(doc(db, "config", "game"), upd, { merge: true });
     m.className = "msg"; m.textContent = "Saved.";
-    ["#setSeason", "#setStart", "#setFee"].forEach((s) => delete $(s).dataset.touched);
+    ["#setSeason", "#setStart", "#setFee", "#setLives"].forEach((s) => delete $(s).dataset.touched);
   } catch (e) { m.className = "msg err"; m.textContent = "Settings didn't save. Try again."; }
 });
-["#setSeason", "#setStart", "#setFee"].forEach((s) => $(s).addEventListener("input", (e) => (e.target.dataset.touched = "1")));
+["#setSeason", "#setStart", "#setFee", "#setLives"].forEach((s) => $(s).addEventListener("input", (e) => (e.target.dataset.touched = "1")));
 /* ---------------------------------------------------------------- navigation */
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 function showTab(t) {

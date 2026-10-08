@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -99,9 +99,8 @@
         <h2>House rules</h2>
         <ul>
           <li><b>Pick one team to win each gameweek.</b> Picks close at the first kick-off of the round, and you can change yours until then.</li>
-          <li><b>Win and you're through.</b> A draw or a defeat and you're out.</li>
+          <li id="ruleLives"><b>Win and you're through.</b> A draw or a defeat and you're out. Forget to pick and you're out too.</li>
           <li><b>Every team once only.</b> Use a team and it's gone for the rest of the game.</li>
-          <li><b>Forget to pick and you're out.</b></li>
           <li><b>Everyone left goes out in the same round?</b> Then they all survive to the next one.</li>
           <li><b>Your match gets postponed?</b> You survive that round, and the team still counts as used.</li>
           <li><b>Last one standing takes the pot.</b> No rebuys.</li>
@@ -159,9 +158,11 @@
           <div class="field"><label for="setSeason">Season</label><input id="setSeason" maxlength="20" placeholder="2026/27"></div>
           <div class="field"><label for="setStart">First gameweek</label><input id="setStart" type="number" min="1" max="38" required></div>
           <div class="field"><label for="setFee">Entry fee (£)</label><input id="setFee" type="number" min="0" step="1" required></div>
+          <div class="field"><label for="setLives">Lives each</label><select id="setLives"><option value="1">1 (straight knock-out)</option><option value="2">2</option><option value="3">3</option></select></div>
           <button class="btn" type="submit">Save</button>
         </form>
         <p class="note">Set these before anyone joins. Changing the first gameweek once the game has started will muddle the table.</p>
+        <p class="note" id="livesNote"></p>
         <div class="msg" id="setMsg" role="status"></div>
       </div>
     </div>
@@ -174,6 +175,6 @@
   </footer>
 </main>
 
-<script type="module" src="app.js?v=12"></script>
+<script type="module" src="app.js?v=13"></script>
 </body>
 </html>
