@@ -362,3 +362,5 @@ input:focus{border-color:var(--biro);outline:none}
 .hearts{color:var(--stamp);letter-spacing:1px;font-size:.95em;white-space:nowrap}
 .hearts i{font-style:normal;color:var(--sheet-rule)}
 .stamp.warn{color:var(--draw)}
+.inplay .res{flex:none;color:#fff;font-size:13px;padding:5px 10px;min-width:56px;text-align:center}
+.inplay .res.q,.inplay .res.P{color:var(--text)}

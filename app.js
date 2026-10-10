@@ -327,9 +327,9 @@ function renderRound() {
   if (live) {
     const pk = pickOf(live.gw, pid), res = pk ? outcome(live, pk.team) : "N";
     const f = pk && (live.fixtures || []).find((x) => x.home === pk.team || x.away === pk.team);
-    const score = f && (f.status === "finished" || f.status === "live") ? `${f.hg}–${f.ag}` : "";
+    const score = f && (f.status === "finished" || f.status === "live") && f.hg != null && f.ag != null ? `${f.hg}–${f.ag}` : "";
     const vs = f ? ` v ${esc(f.home === pk.team ? f.awayName : f.homeName)}` : "";
-    h += `<div class="inplay"><div class="what"><b>Gameweek ${live.gw} is under way</b><span>${pk ? `You went with ${esc(pk.teamName || teamName(live, pk.team))}${vs}${score ? `, ${score}` : ""}` : "You didn't pick this round"}</span></div>${pk ? `<span class="res ${res === "?" ? "q" : res}">${res === "?" ? (f?.status === "live" ? "Live" : "To play") : esc(RES_WORD[res])}</span>` : ""}</div>`;
+    h += `<div class="inplay"><div class="what"><b>Gameweek ${live.gw} is under way</b><span>${pk ? `You went with ${esc(pk.teamName || teamName(live, pk.team))}${vs}${score ? `, ${score}` : ""}` : "You didn't pick this round"}</span></div>${pk ? `<span class="res ${res === "?" ? "q" : res}">${res === "?" ? (f?.status === "live" ? "Live" : "To play") : ({ W: "Won", D: "Drew", L: "Lost", P: "Postponed" }[res] || esc(RES_WORD[res]))}</span>` : ""}</div>`;
   }
   if (!o) {
     rp.innerHTML = h + `<div class="sheet"><h2>Next round</h2><div class="empty">The next gameweek's fixtures appear here once they're confirmed.</div></div>`;
