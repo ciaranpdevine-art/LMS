@@ -364,3 +364,6 @@ input:focus{border-color:var(--biro);outline:none}
 .stamp.warn{color:var(--draw)}
 .inplay .res{flex:none;color:#fff;font-size:13px;padding:5px 10px;min-width:56px;text-align:center}
 .inplay .res.q,.inplay .res.P{color:var(--text)}
+.override{margin-top:14px;padding:14px;border:2px solid var(--biro);border-radius:4px;background:#fff}
+.override h3{margin:0 0 4px}
+.override select{font-size:15px}

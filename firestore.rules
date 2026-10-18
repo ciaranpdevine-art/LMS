@@ -148,6 +148,8 @@ service cloud.firestore {
           && request.resource.data.teamName is string
           && request.resource.data.teamName.size() < 40;
         allow delete: if false;
+        // The organiser can put in or correct a pick after the deadline (missed-pick override).
+        allow create, update, delete: if isAdmin();
       }
     }
   }

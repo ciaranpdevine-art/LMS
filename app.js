@@ -403,7 +403,7 @@ function historyItems(pid) {
     const badge = open ? `<span class="res q">Can change</span>`
       : res === "?" ? `<span class="res q">${f?.status === "live" ? "Live" : "To play"}</span>`
       : `<span class="res ${res}">${res === "W" ? "Won" : res === "D" ? "Drew" : res === "L" ? "Lost" : res === "P" ? "Postponed" : esc(RES_WORD[res])}</span>`;
-    rows.push(`<li><span class="gwk">GW${r.gw}</span><div class="mp"><b class="hand">${esc(pk.teamName || teamName(r, pk.team))}</b><span>${opp}${score ? `, ${score}` : when ? `, ${esc(when)}` : ""}</span></div>${badge}</li>`);
+    rows.push(`<li><span class="gwk">GW${r.gw}</span><div class="mp"><b class="hand">${esc(pk.teamName || teamName(r, pk.team))}</b><span>${opp}${score ? `, ${score}` : when ? `, ${esc(when)}` : ""}${pk.byOrganiser ? " · added by organiser" : ""}</span></div>${badge}</li>`);
   }
   return rows;
 }
@@ -569,10 +569,12 @@ function renderOrg() {
   $("#playerList").innerHTML = ps.length ? `<p class="note">${n} paid player${n === 1 ? "" : "s"} · pot £${((Number(cfg().entryFee) || 0) * n).toLocaleString("en-GB")}</p><div class="list">${ps.map(([id, p]) => {
     const st = p.status === "removed" ? "Switched off" : p.status === "out" ? `Out GW${p.outGw}` : "Standing";
     const action = p.status === "removed" ? `<button class="btn small ghost" data-restore="${id}">Switch back on</button>` : `<button class="btn small ghost" data-remove="${id}">Switch off</button>`;
-    return `<div class="item"><div class="who-l"><b>${esc(p.nickname)}</b><span class="note">${st}</span></div>${action}</div>`;
+    const fix = overrideRounds(id).length ? `<button class="btn small ghost" data-override="${id}" type="button">Add missed pick</button>` : "";
+    return `<div class="item"><div class="who-l"><b>${esc(p.nickname)}</b><span class="note">${hearts(p)} ${st}</span></div><div class="row">${fix}${action}</div></div>`;
   }).join("")}</div>` : `<div class="empty">Players appear here once they enter their code.</div>`;
   $("#playerList").querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => twoTap(b, () => updateDoc(doc(db, "players", b.dataset.remove), { status: "removed", prevStatus: S.players[b.dataset.remove].status }))));
   $("#playerList").querySelectorAll("[data-restore]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.restore), { status: S.players[b.dataset.restore].prevStatus || "alive" })));
+  $("#playerList").querySelectorAll("[data-override]").forEach((b) => (b.onclick = () => openOverride(b.dataset.override)));
 
   // sync info
 
@@ -775,6 +777,78 @@ async function settleRound(r) {
   const lostOnly = lifeLost.length - out.length;
   const koText = out.length ? `${out.length} player${out.length === 1 ? "" : "s"} knocked out` : "Nobody knocked out";
   return `Gameweek ${r.gw} settled. ${koText}${lostOnly ? `, ${lostOnly} lost a life` : ""}, ${left.length} still standing.`;
+}
+
+/* ---------------------------------------------------------------- organiser: missed-pick override */
+// Gameweeks where the organiser can put in a pick for a player after the deadline:
+// any kicked-off gameweek that isn't settled yet, or the latest settled one if they missed it.
+function overrideRounds(pid) {
+  const p = S.players[pid];
+  if (!p || p.status === "removed") return [];
+  const now = Date.now(), all = rounds();
+  const open = p.status === "alive" ? all.filter((r) => !r.processed && ms(r.deadline) <= now) : [];
+  const last = all.filter((r) => r.processed).pop();
+  const missed = last && last.results?.[pid]?.res === "N" && (p.status === "alive" || (p.status === "out" && p.outGw === last.gw)) ? [last] : [];
+  return [...missed, ...open];
+}
+function openOverride(pid) {
+  const box = $("#overrideBox"), p = S.players[pid], opts = overrideRounds(pid);
+  if (!opts.length) { box.innerHTML = ""; return; }
+  const teamsFor = (gw) => {
+    const r = S.rounds.find((x) => x.gw === gw), used = usedTeams(pid, gw), cur = pickOf(gw, pid)?.team;
+    return [...(r.fixtures || [])].sort((a, b) => ms(a.kickoff) - ms(b.kickoff)).flatMap((f) => [[f.home, f.homeName, f.awayName, "v"], [f.away, f.awayName, f.homeName, "at"]])
+      .filter(([c]) => !used.has(c))
+      .map(([c, n, opp, ha]) => `<option value="${esc(c)}" ${c === cur ? "selected" : ""}>${esc(n)} (${ha} ${esc(opp)})</option>`).join("");
+  };
+  const draw = (gw) => {
+    const r = S.rounds.find((x) => x.gw === gw), cur = pickOf(gw, pid);
+    box.innerHTML = `<div class="override">
+      <h3>Missed pick for ${esc(p.nickname)}</h3>
+      <p class="note">${r.processed ? `Gameweek ${gw} is already settled. If the team you choose won, ${esc(p.nickname)} is put back in the game.` : `The pick goes in as if they'd made it before the deadline.`}${cur ? ` Their current pick is ${esc(cur.teamName || cur.team)}.` : ""}</p>
+      <div class="row">
+        <div class="field"><label for="ovGw">Gameweek</label><select id="ovGw">${opts.map((x) => `<option value="${x.gw}" ${x.gw === gw ? "selected" : ""}>Gameweek ${x.gw}${x.processed ? " (settled)" : ""}</option>`).join("")}</select></div>
+        <div class="field"><label for="ovTeam">Team</label><select id="ovTeam">${teamsFor(gw)}</select></div>
+      </div>
+      <div class="row"><button class="btn go" id="ovSave" type="button">Save pick</button><button class="btn ghost" id="ovCancel" type="button">Cancel</button></div>
+      <div class="msg" id="ovMsg" role="status"></div></div>`;
+    $("#ovGw").onchange = (e) => draw(Number(e.target.value));
+    $("#ovCancel").onclick = () => (box.innerHTML = "");
+    $("#ovSave").onclick = async () => {
+      const team = $("#ovTeam").value, m = $("#ovMsg");
+      if (!team) { m.className = "msg err"; m.textContent = "Choose a team."; return; }
+      $("#ovSave").disabled = true;
+      try { m.className = "msg"; m.textContent = await savePickOverride(pid, gw, team); $("#ovSave").textContent = "Saved"; }
+      catch (e) { m.className = "msg err"; m.textContent = errText(e, "Couldn't save the pick. Check you're signed in as organiser and that the latest rules are published."); $("#ovSave").disabled = false; }
+    };
+  };
+  draw(opts[0].gw);
+  box.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function savePickOverride(pid, gw, team) {
+  const r = S.rounds.find((x) => x.gw === gw), p = S.players[pid];
+  const f = (r.fixtures || []).find((x) => x.home === team || x.away === team);
+  const teamName_ = f.home === team ? f.homeName : f.awayName;
+  const pick = { team, teamName: teamName_, at: serverTimestamp(), byOrganiser: true };
+  if (!r.processed) {
+    await setDoc(doc(db, "rounds", String(gw), "picks", pid), pick);
+    return `${teamName_} added for ${p.nickname} in Gameweek ${gw}. It counts when you settle the gameweek.`;
+  }
+  // Already settled: re-score this player for that gameweek.
+  const res = outcome(r, team), ok = res === "W" || res === "P", prev = r.results?.[pid] || {};
+  const b = writeBatch(db);
+  b.set(doc(db, "rounds", String(gw), "picks", pid), pick);
+  b.update(doc(db, "rounds", String(gw)), { results: { ...(r.results || {}), [pid]: { team, res, overridden: true, lifeLost: ok ? false : !!prev.lifeLost } } });
+  const upd = { used: [...new Set([...(p.used || []), team])] };
+  let back = false;
+  if (ok) {
+    if (prev.lifeLost) upd.lost = Math.max(0, (Number(p.lost) || 0) - 1);
+    if (p.status === "out" && p.outGw === gw) { Object.assign(upd, { status: "alive", outGw: null, outResult: null }); back = true; }
+  }
+  b.update(doc(db, "players", pid), upd);
+  if (ok && cfg().winner && cfg().wonGw === gw) b.set(doc(db, "config", "game"), { winner: null, wonGw: null }, { merge: true });
+  await b.commit();
+  if (!ok) return `${teamName_} recorded for ${p.nickname}, but they ${res === "D" ? "drew" : "lost"}, so ${p.nickname} stays ${p.status === "out" ? "out" : "as they were"}.`;
+  return back ? `${teamName_} won, so ${p.nickname} is back in the game.` : `${teamName_} won, so ${p.nickname}'s lost life has been given back.`;
 }
 
 /* ---------------------------------------------------------------- forms */
