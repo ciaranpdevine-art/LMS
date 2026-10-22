@@ -191,6 +191,8 @@ function subscribePublic() {
   onSnapshot(doc(db, "config", "game"), (s) => { S.config = s.exists() ? s.data() : null; S.loaded.config = true; render(); }, showLoadError);
   onSnapshot(collection(db, "players"), (s) => { const o = {}; s.forEach((d) => (o[d.id] = d.data())); S.players = o; S.loaded.players = true; render(); }, showLoadError);
   onSnapshot(collection(db, "rounds"), (s) => {
+    // Remember whether the server has confirmed the list (an offline cache can look empty).
+    if (!(s.metadata && s.metadata.fromCache) || s.docs.length) S.roundsConfirmed = true;
     S.rounds = s.docs.map((d) => d.data()).filter((r) => typeof r.gw === "number");
     S.loaded.rounds = true; syncPickSubs(); render();
   }, showLoadError);
@@ -644,6 +646,8 @@ async function loadSeason(btn) {
       if (!byGw.has(gw)) byGw.set(gw, []);
       byGw.get(gw).push({ id: `${gw}-${byGw.get(gw).length + 1}`, home: NAME2CODE[home], homeName: home, away: NAME2CODE[away], awayName: away, kickoff: londonToIso(when), status: "scheduled", hg: null, ag: null, result: null });
     }
+    // Without the confirmed list of gameweeks, existing ones could be reloaded and their results wiped.
+    if (!S.roundsConfirmed) throw oops("Can't reach the game right now. Check your connection and try again.");
     const now = Date.now(), have = new Set(S.rounds.map((r) => r.gw));
     let start = Number(cfg().startGw) || 0;
     if (!start) start = [...byGw.entries()].filter(([, fx]) => firstKick(fx).getTime() > now).map(([g]) => g).sort((a, b) => a - b)[0];
