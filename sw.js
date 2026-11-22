@@ -15,6 +15,11 @@ self.addEventListener('push', (event) => {
   }));
 });
 
+// Lets the app ask which version of this helper is running (for the reminder check).
+self.addEventListener('message', (event) => {
+  if (event.data === 'version' && event.ports && event.ports[0]) event.ports[0].postMessage(CACHE_NAME);
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const link = (event.notification.data && event.notification.data.link) || self.registration.scope;

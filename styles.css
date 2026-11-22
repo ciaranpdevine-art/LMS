@@ -375,3 +375,6 @@ input:focus{border-color:var(--biro);outline:none}
 .rem-rules .rem-line{margin-top:8px}
 .rem-msg{margin:8px 0 0}
 #remindCount:empty{display:none}
+.remcheck{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px;font-size:15px}
+.remcheck li.ok b{color:var(--win)}
+.remcheck li.bad b{color:var(--stamp)}

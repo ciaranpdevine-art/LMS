@@ -996,9 +996,40 @@ function remindersHTML(where) {
   if (st === "blocked") return `<p class="rem-line"><b>Notifications are blocked</b> for this app. To get reminders, allow notifications for this site in your phone or browser settings, then reopen the app.</p>`;
   return `<p class="rem-line">This browser can't show reminders. Try Chrome on Android, or add the app to your iPhone home screen.</p>`;
 }
+// Reminder check: tells the player (and the organiser) where notifications are getting stuck.
+async function reminderCheck() {
+  const out = $("#remCheckOut");
+  out.innerHTML = `<p class="note">Checking…</p>`;
+  const lines = [];
+  const ok = (good, text, fix) => lines.push(`<li class="${good ? "ok" : "bad"}"><b>${good ? "✓" : "✗"}</b> ${text}${!good && fix ? `<br><span class="note">${fix}</span>` : ""}</li>`);
+  try {
+    ok(Notification.permission === "granted", "Notifications allowed for this app", "Turn reminders on, and choose Allow when asked.");
+    const reg = await navigator.serviceWorker.getRegistration("./");
+    ok(!!reg && !!reg.active, "Background helper installed", "Close the app completely and open it again.");
+    if (reg && reg.active) {
+      const ver = await new Promise((res) => { const ch = new MessageChannel(); ch.port1.onmessage = (e) => res(e.data); reg.active.postMessage("version", [ch.port2]); setTimeout(() => res(null), 2000); });
+      ok(ver === "lms-offline-v3", `Background helper up to date${ver ? ` (${esc(ver)})` : ""}`, "Close the app completely, wait a minute and open it again.");
+      const sub = await reg.pushManager.getSubscription();
+      ok(!!sub, "Connected for notifications", "Turn reminders off and on again on this tab.");
+      ok(!!lsGet(remKey()), "Reminder setting saved for your player", "Turn reminders off and on again on this tab.");
+      await reg.showNotification("Last Man Standing", { body: "Test from your phone: this is what a reminder looks like.", icon: "icon-192.png", tag: "lms-local-test" });
+      lines.push(`<li class="ok"><b>→</b> A test notification was just shown on this phone. Did it appear?</li>`);
+    }
+  } catch (e) {
+    lines.push(`<li class="bad"><b>✗</b> The check stopped: ${esc(e.message || String(e))}</li>`);
+  }
+  out.innerHTML = `<ul class="remcheck">${lines.join("")}</ul>
+    <p class="note">If the test from your phone <b>appeared</b> but reminders from the game don't, your phone is stopping Chrome in the background. On Samsung: Settings → Battery → Background usage limits, take Chrome out of Sleeping and Deep sleeping apps, then Settings → Apps → Chrome → Battery → Unrestricted.</p>
+    <p class="note">If it <b>didn't appear</b>, check Settings → Notifications for Chrome and for this app, including the categories inside.</p>`;
+}
 function renderReminders() {
   const box = $("#remindBox"), rules = $("#remindRules"), p = me();
-  if (rules) rules.innerHTML = remindersHTML("rules") || `<p class="note">Reminders aren't available in this game.</p>`;
+  if (rules) {
+    const keep = $("#remCheckOut")?.innerHTML || "";
+    rules.innerHTML = (remindersHTML("rules") || `<p class="note">Reminders aren't available in this game.</p>`)
+      + (["on", "available", "blocked"].includes(REM.state) ? `<div class="row"><button class="btn small ghost" type="button" id="remCheckBtn">Run a reminder check</button></div><div id="remCheckOut">${keep}</div>` : "");
+    const cb = $("#remCheckBtn"); if (cb) cb.onclick = () => reminderCheck();
+  }
   if (box) {
     const offer = p && p.status === "alive" && !cfg().winner && ["available", "ios-install"].includes(REM.state) && !lsGet(remSkipKey());
     const confirm = REM.state === "on" && box.dataset.justOn === "1";
