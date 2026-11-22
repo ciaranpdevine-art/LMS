@@ -378,3 +378,6 @@ input:focus{border-color:var(--biro);outline:none}
 .remcheck{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px;font-size:15px}
 .remcheck li.ok b{color:var(--win)}
 .remcheck li.bad b{color:var(--stamp)}
+.past{list-style:none;margin:8px 0 0;padding:0;display:grid}
+.past li{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--sheet-rule)}
+.past li:last-child{border-bottom:0}

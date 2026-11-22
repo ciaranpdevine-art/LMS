@@ -77,7 +77,7 @@ async function sendResults(db, tokens, cfg) {
   if (!(settled > Date.now() - 48 * 3600e3)) { console.log(`Gameweek ${r.gw} was settled before results notifications existed (or over 2 days ago): not sending.`); return; }
 
   const players = Object.fromEntries((await db.collection("players").get()).docs.map((d) => [d.id, d.data()]));
-  const counted = Object.entries(players).filter(([, p]) => p.status !== "removed");
+  const counted = Object.entries(players).filter(([, p]) => p.status !== "removed" && p.status !== "unpaid");
   const standing = counted.filter(([, p]) => p.status === "alive").length;
   const out = counted.filter(([, p]) => p.status === "out" && p.outGw === r.gw).length;
   const lives = Math.max(1, Math.min(3, Number(cfg.lives) || 1));
@@ -109,6 +109,20 @@ async function sendResults(db, tokens, cfg) {
   console.log(`Gameweek ${r.gw} results sent to ${sent.sent} phone(s), ${sent.failed} failed.`);
 }
 
+// When the organiser starts a new game, tell everyone with notifications on.
+async function announceNewGame(db, tokens, cfg) {
+  const n = Number(cfg.game) || 1;
+  if (n < 2 || cfg.newGameAnnounced === n) return;
+  const start = await db.doc(`rounds/${cfg.startGw}`).get();
+  const dl = start.exists ? ms(start.data().deadline) : NaN;
+  const when = Number.isNaN(dl) ? "" : ` Picks close ${ukDay(dl)} at ${ukTime(dl)}.`;
+  const fee = Number(cfg.entryFee) || 0;
+  const body = `Game ${n} starts in Gameweek ${cfg.startGw}.${when} Pay the organiser${fee ? ` the £${fee} entry fee` : ""} to join.`;
+  const r = await send(db, tokens, "Last Man Standing: new game!", body, "lms-newgame");
+  await db.doc("config/game").set({ newGameAnnounced: n }, { merge: true });
+  console.log(`New game ${n} announced to ${r.sent} phone(s), ${r.failed} failed.`);
+}
+
 async function main() {
   const db = connect();
   if (!db) {
@@ -128,6 +142,7 @@ async function main() {
   const cfgSnap = await db.doc("config/game").get();
   const cfg = cfgSnap.exists ? cfgSnap.data() : {};
   await sendResults(db, tokens, cfg);
+  await announceNewGame(db, tokens, cfg);
   if (cfg.winner) { console.log("The game is over: no reminders."); return; }
   const startGw = Number(cfg.startGw) || 1;
   const now = Date.now();

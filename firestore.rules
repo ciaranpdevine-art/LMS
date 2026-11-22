@@ -29,9 +29,11 @@ service cloud.firestore {
     }
     // Teams are added to a player's used list when the organiser settles a gameweek.
     // Until then, also check the last two picks directly.
+    // Picks from before this game's first gameweek (an earlier game) don't count.
     function notPickedRecently(gw, pid, team) {
-      return (!exists(pickBefore(gw, 1, pid)) || get(pickBefore(gw, 1, pid)).data.team != team)
-        && (!exists(pickBefore(gw, 2, pid)) || get(pickBefore(gw, 2, pid)).data.team != team);
+      let start = get(/databases/$(database)/documents/config/game).data.startGw;
+      return (int(gw) - 1 < start || !exists(pickBefore(gw, 1, pid)) || get(pickBefore(gw, 1, pid)).data.team != team)
+        && (int(gw) - 2 < start || !exists(pickBefore(gw, 2, pid)) || get(pickBefore(gw, 2, pid)).data.team != team);
     }
 
     // The organiser passcode, typed into the Firebase console as private/admin, field "pass".
@@ -63,6 +65,12 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['pass', 'at'])
         && request.resource.data.pass is string
         && request.resource.data.pass == passcode();
+    }
+
+    // Finished games, for the past winners list.
+    match /games/{gameId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Game settings and last-update info.

@@ -168,7 +168,9 @@ function startGw() { return Number(cfg().startGw) || 1; }
 function rounds() { return S.rounds.filter((r) => r.gw >= startGw()).sort((a, b) => a.gw - b.gw); }
 function openRound() { const now = Date.now(); return rounds().find((r) => ms(r.deadline) > now) || null; }
 function inPlayRound() { const now = Date.now(); return rounds().filter((r) => ms(r.deadline) <= now && !r.processed).pop() || null; }
-function countedPlayers() { return Object.entries(S.players).filter(([, p]) => p.status !== "removed"); }
+// In this game: not switched off, and paid up for it ("unpaid" = carried over from the last game, not paid yet).
+const inGame = (p) => !!p && p.status !== "removed" && p.status !== "unpaid";
+function countedPlayers() { return Object.entries(S.players).filter(([, p]) => inGame(p)); }
 function myId() { return S.session?.playerId || null; }
 function me() { return myId() ? S.players[myId()] : null; }
 function pickOf(gw, pid) {
@@ -189,6 +191,7 @@ function usedTeams(pid, beforeGw) {
 
 /* ---------------------------------------------------------------- subscriptions */
 function subscribePublic() {
+  watchGames();
   onSnapshot(doc(db, "config", "game"), (s) => { S.config = s.exists() ? s.data() : null; S.loaded.config = true; render(); }, showLoadError);
   onSnapshot(collection(db, "players"), (s) => { const o = {}; s.forEach((d) => (o[d.id] = d.data())); S.players = o; S.loaded.players = true; render(); }, showLoadError);
   onSnapshot(collection(db, "rounds"), (s) => {
@@ -303,6 +306,11 @@ function renderStatus() {
   const survived = rounds().filter((r) => r.processed && ["W", "P"].includes(r.results?.[myId()]?.res)).length;
   let stamp, head, line;
   if (w === myId()) { stamp = `<div class="stamp won">WINNER</div>`; head = "You've won it"; line = "Last one standing. Go and collect the pot."; }
+  else if (p.status === "unpaid") {
+    const st = S.rounds.find((r) => r.gw === startGw()), fee = Number(cfg().entryFee) || 0;
+    stamp = `<div class="stamp warn">NEW<br>GAME</div>`; head = "A new game is starting";
+    line = `${cfg().game ? `Game ${esc(cfg().game)}` : "The new game"} starts in Gameweek ${startGw()}${st ? `, and picks close ${esc(fmtWhen(st.deadline).day)} ${esc(fmtWhen(st.deadline).time)}` : ""}. Pay the organiser${fee ? ` the £${fee} entry fee` : ""} to join, and they'll switch you in.`;
+  }
   else if (p.status === "removed") { stamp = `<div class="stamp out">OFF</div>`; head = "Your entry's switched off"; line = "Speak to the organiser if that's a mistake."; }
   else if (p.status === "out") {
     const o = p.outResult || {}, r = S.rounds.find((x) => x.gw === p.outGw);
@@ -572,21 +580,24 @@ function renderOrg() {
   $("#codeList").querySelectorAll("[data-delcode]").forEach((b) => (b.onclick = () => twoTap(b, () => deleteDoc(doc(db, "codes", b.dataset.delcode)))));
 
   // players
-  const ps = Object.entries(S.players).sort((a, b) => a[1].nickname.localeCompare(b[1].nickname));
+  const ps = Object.entries(S.players).sort((a, b) => (a[1].status === "unpaid" ? 0 : 1) - (b[1].status === "unpaid" ? 0 : 1) || a[1].nickname.localeCompare(b[1].nickname));
   const n = countedPlayers().length;
   $("#playerList").innerHTML = ps.length ? `<p class="note">${n} paid player${n === 1 ? "" : "s"} · pot £${((Number(cfg().entryFee) || 0) * n).toLocaleString("en-GB")}</p><div class="list">${ps.map(([id, p]) => {
-    const st = p.status === "removed" ? "Switched off" : p.status === "out" ? `Out GW${p.outGw}` : "Standing";
-    const action = p.status === "removed" ? `<button class="btn small ghost" data-restore="${id}">Switch back on</button>` : `<button class="btn small ghost" data-remove="${id}">Switch off</button>`;
+    const st = p.status === "unpaid" ? "Not paid for this game yet" : p.status === "removed" ? "Switched off" : p.status === "out" ? `Out GW${p.outGw}` : "Standing";
+    const action = p.status === "unpaid" ? `<button class="btn small go" data-paid="${id}" type="button">Mark as paid</button>`
+      : p.status === "removed" ? `<button class="btn small ghost" data-restore="${id}">Switch back on</button>` : `<button class="btn small ghost" data-remove="${id}">Switch off</button>`;
     const fix = overrideRounds(id).length ? `<button class="btn small ghost" data-override="${id}" type="button">Add missed pick</button>` : "";
     return `<div class="item"><div class="who-l"><b>${esc(p.nickname)}</b><span class="note">${hearts(p)} ${st}</span></div><div class="row">${fix}${action}</div></div>`;
   }).join("")}</div>` : `<div class="empty">Players appear here once they enter their code.</div>`;
   $("#playerList").querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => twoTap(b, () => updateDoc(doc(db, "players", b.dataset.remove), { status: "removed", prevStatus: S.players[b.dataset.remove].status }))));
   $("#playerList").querySelectorAll("[data-restore]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.restore), { status: S.players[b.dataset.restore].prevStatus || "alive" })));
   $("#playerList").querySelectorAll("[data-override]").forEach((b) => (b.onclick = () => openOverride(b.dataset.override)));
+  $("#playerList").querySelectorAll("[data-paid]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.paid), { status: "alive" })));
+  renderNewGame();
   watchTokens();
   const rc = $("#remindCount");
   if (rc) {
-    const on = new Set(Object.values(S.tokens || {}).map((t) => t.playerId).filter((id) => S.players[id] && S.players[id].status !== "removed"));
+    const on = new Set(Object.values(S.tokens || {}).map((t) => t.playerId).filter((id) => inGame(S.players[id])));
     rc.textContent = PREVIEW || !CFG.vapidKey ? "" : `Reminders: ${on.size} of ${countedPlayers().length} player${countedPlayers().length === 1 ? " has" : "s have"} turned them on.`;
   }
 
@@ -761,7 +772,7 @@ async function settleRound(r) {
   const picksSnap = await getDocs(collection(db, "rounds", String(r.gw), "picks"));
   const picks = {};
   picksSnap.forEach((d) => (picks[d.id] = d.data().team));
-  const counted = Object.entries(S.players).filter(([, p]) => p.status !== "removed");
+  const counted = Object.entries(S.players).filter(([, p]) => inGame(p));
   const alive = counted.filter(([, p]) => p.status === "alive").map(([id]) => id);
   const results = {}, fallen = [];
   const lives = livesEach();
@@ -800,7 +811,7 @@ async function settleRound(r) {
 // any kicked-off gameweek that isn't settled yet, or the latest settled one if they missed it.
 function overrideRounds(pid) {
   const p = S.players[pid];
-  if (!p || p.status === "removed") return [];
+  if (!inGame(p)) return [];
   const now = Date.now(), all = rounds();
   const open = p.status === "alive" ? all.filter((r) => !r.processed && ms(r.deadline) <= now) : [];
   const last = all.filter((r) => r.processed).pop();
@@ -865,6 +876,70 @@ async function savePickOverride(pid, gw, team) {
   await b.commit();
   if (!ok) return `${teamName_} recorded for ${p.nickname}, but they ${res === "D" ? "drew" : "lost"}, so ${p.nickname} stays ${p.status === "out" ? "out" : "as they were"}.`;
   return back ? `${teamName_} won, so ${p.nickname} is back in the game.` : `${teamName_} won, so ${p.nickname}'s lost life has been given back.`;
+}
+
+/* ---------------------------------------------------------------- organiser: start a new game */
+// Saves the finished game to the past-winners list, then starts a fresh game from a gameweek
+// that hasn't kicked off. Everyone keeps their code and nickname but is marked "not paid"
+// until the organiser marks them as paid.
+function renderNewGame() {
+  const el = $("#newGame");
+  if (!el || el.dataset.open === "1") return;
+  const now = Date.now(), future = S.rounds.filter((r) => ms(r.deadline) > now && !r.processed).sort((a, b) => a.gw - b.gw);
+  const over = !!cfg().winner;
+  el.innerHTML = `<p class="sub">${over ? `This game is over. Start the next one when you're ready.` : `Ends this game early and starts a new one. Only do this if you mean to.`}</p>
+    <div class="row"><button class="btn ${over ? "go" : "ghost"}" type="button" id="ngOpen" ${future.length ? "" : "disabled"}>Start a new game</button></div>
+    ${future.length ? "" : `<p class="note">There are no gameweeks left to start from. Load next season's fixtures first.</p>`}`;
+  const b = $("#ngOpen"); if (b) b.onclick = () => openNewGame(future);
+}
+function openNewGame(future) {
+  const el = $("#newGame"); el.dataset.open = "1";
+  const c = cfg(), n = (Number(c.game) || 1) + 1, carried = Object.values(S.players).filter((p) => p.status !== "removed").length;
+  el.innerHTML = `<div class="override"><h3>Game ${n}</h3>
+    <div class="row">
+      <div class="field"><label for="ngStart">First gameweek</label><select id="ngStart">${future.map((r) => `<option value="${r.gw}">Gameweek ${r.gw} (picks close ${esc(fmtWhen(r.deadline).day)} ${esc(fmtWhen(r.deadline).time)})</option>`).join("")}</select></div>
+      <div class="field"><label for="ngFee">Entry fee (£)</label><input id="ngFee" type="number" min="0" step="1" value="${Number(c.entryFee) || 0}"></div>
+      <div class="field"><label for="ngLives">Lives each</label><select id="ngLives"><option value="1">1 (straight knock-out)</option><option value="2">2</option><option value="3">3</option></select></div>
+    </div>
+    <p class="note">${carried} player${carried === 1 ? "" : "s"} carry over, marked as not paid. Tap <b>Mark as paid</b> next to each one as they pay. New people join with a new code as usual.${c.winner ? ` ${esc(S.players[c.winner]?.nickname || "The winner")} goes on the past winners list.` : ""}</p>
+    <div class="row"><button class="btn go" type="button" id="ngGo">Start Game ${n}</button><button class="btn ghost" type="button" id="ngCancel">Cancel</button></div>
+    <div class="msg" id="ngMsg" role="status"></div></div>`;
+  $("#ngLives").value = String(livesEach());
+  $("#ngCancel").onclick = () => { el.dataset.open = ""; renderNewGame(); };
+  $("#ngGo").onclick = (e) => twoTap(e.currentTarget, async () => {
+    const m = $("#ngMsg"), go = $("#ngGo");
+    go.disabled = true; m.className = "msg"; m.textContent = "Starting the new game…";
+    try { m.textContent = await startNewGame(n, Number($("#ngStart").value), Number($("#ngFee").value) || 0, Number($("#ngLives").value) || 1); go.textContent = "Started"; el.dataset.open = ""; setTimeout(renderNewGame, 4000); }
+    catch (err) { m.className = "msg err"; m.textContent = errText(err, "Couldn't start the new game. Check your signal and that the latest rules are published."); go.disabled = false; }
+  });
+}
+async function startNewGame(n, start, fee, lives) {
+  const c = cfg(), b = writeBatch(db);
+  const played = rounds().filter((r) => r.processed);
+  const counted = countedPlayers();
+  b.set(doc(db, "games", String(n - 1)), {
+    game: n - 1, season: c.season || "", startGw: startGw(), endGw: c.wonGw || (played.length ? played[played.length - 1].gw : startGw()),
+    winner: c.winner ? (S.players[c.winner]?.nickname || "") : "", players: counted.length, pot: (Number(c.entryFee) || 0) * counted.length, endedAt: serverTimestamp(),
+  });
+  for (const [id, p] of Object.entries(S.players)) {
+    if (p.status === "removed") continue;
+    b.update(doc(db, "players", id), { status: "unpaid", used: [], lost: 0, outGw: null, outResult: null });
+  }
+  b.set(doc(db, "config", "game"), { game: n, startGw: start, entryFee: fee, lives, winner: null, wonGw: null, newGameAnnounced: null }, { merge: true });
+  await b.commit();
+  return `Game ${n} is set up and starts in Gameweek ${start}. Mark players as paid in the list above as their entry fees come in.`;
+}
+
+/* ---------------------------------------------------------------- past winners */
+function watchGames() {
+  if (subs.games) return;
+  subs.games = onSnapshot(collection(db, "games"), (c) => { const o = []; c.forEach((d) => o.push(d.data())); S.games = o.sort((a, b) => b.game - a.game); renderPastGames(); }, () => {});
+}
+function renderPastGames() {
+  const el = $("#pastGames"); if (!el) return;
+  const g = S.games || [];
+  el.hidden = !g.length;
+  el.innerHTML = g.length ? `<h3>Past winners</h3><ul class="past">${g.map((x) => `<li><span class="gwk">Game ${esc(x.game)}</span><div class="mp"><b class="hand">${esc(x.winner || "No winner")}</b><span>Gameweeks ${esc(x.startGw)} to ${esc(x.endGw)}${x.season ? `, ${esc(x.season)}` : ""} · ${esc(x.players)} players${x.pot ? ` · £${Number(x.pot).toLocaleString("en-GB")} pot` : ""}</span></div></li>`).join("")}</ul>` : "";
 }
 
 /* ---------------------------------------------------------------- forms */
