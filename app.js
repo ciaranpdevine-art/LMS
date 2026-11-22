@@ -1,4 +1,5 @@
-import { firebaseConfig } from "./firebase-config.js";
+import * as CFG from "./firebase-config.js";
+const { firebaseConfig } = CFG;
 
 /* ---------------------------------------------------------------- setup */
 const $ = (s) => document.querySelector(s);
@@ -223,6 +224,10 @@ function syncPickSubs() {
     }
   }
 }
+function watchTokens() {
+  if (PREVIEW || !amAdmin() || subs.tokens) return;
+  subs.tokens = onSnapshot(collection(db, "pushTokens"), (c) => { const o = {}; c.forEach((d) => (o[d.id] = d.data())); S.tokens = o; renderOrg(); }, () => { subs.tokens = null; });
+}
 function watchCodes() {
   if (!amAdmin() || subs.codes) return;
   subs.codes = onSnapshot(collection(db, "codes"), (c) => { const o = {}; c.forEach((d) => (o[d.id] = d.data())); S.codes = o; renderOrg(); }, () => { subs.codes = null; });
@@ -233,6 +238,7 @@ function subscribeSession(uid) {
     S.session = s.exists() ? s.data() : {};
     S.loaded.session = true;
     watchCodes(); syncPickSubs(); render();
+    if (S.session.playerId && S.session.playerId !== REM.for) { REM.for = S.session.playerId; checkReminders().then(renderReminders); }
   }, () => { S.session = {}; S.loaded.session = true; render(); });
   if (!PREVIEW) {
     if (subs.admin) subs.admin();
@@ -259,7 +265,7 @@ function render() {
   if (inOrg) { $("#joinPanel").hidden = true; $("#gameArea").hidden = true; renderOrg(); return; }
   if (!p) { $("#joinPanel").hidden = false; $("#gameArea").hidden = true; return; }
   $("#joinPanel").hidden = true; $("#gameArea").hidden = false;
-  renderStatus(); renderRules(); renderRound(); renderTable(); renderHistory(); renderPlan();
+  renderStatus(); renderRules(); renderRound(); renderTable(); renderHistory(); renderPlan(); renderReminders();
 }
 
 function renderBoard() {
@@ -577,6 +583,12 @@ function renderOrg() {
   $("#playerList").querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => twoTap(b, () => updateDoc(doc(db, "players", b.dataset.remove), { status: "removed", prevStatus: S.players[b.dataset.remove].status }))));
   $("#playerList").querySelectorAll("[data-restore]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.restore), { status: S.players[b.dataset.restore].prevStatus || "alive" })));
   $("#playerList").querySelectorAll("[data-override]").forEach((b) => (b.onclick = () => openOverride(b.dataset.override)));
+  watchTokens();
+  const rc = $("#remindCount");
+  if (rc) {
+    const on = new Set(Object.values(S.tokens || {}).map((t) => t.playerId).filter((id) => S.players[id] && S.players[id].status !== "removed"));
+    rc.textContent = PREVIEW || !CFG.vapidKey ? "" : `Reminders: ${on.size} of ${countedPlayers().length} player${countedPlayers().length === 1 ? " has" : "s have"} turned them on.`;
+  }
 
   // sync info
 
@@ -905,6 +917,102 @@ $("#setForm").addEventListener("submit", async (ev) => {
   } catch (e) { m.className = "msg err"; m.textContent = "Settings didn't save. Try again."; }
 });
 ["#setSeason", "#setStart", "#setFee", "#setLives"].forEach((s) => $(s).addEventListener("input", (e) => (e.target.dataset.touched = "1")));
+/* ---------------------------------------------------------------- reminders (push notifications) */
+// Players can ask for a notification 2 hours before picks close. The phone gets a token from
+// Firebase, the app saves it under pushTokens, and the GitHub job (reminders.js) sends the
+// reminder to players who are still in and haven't picked.
+const REM = { state: "unknown", busy: false, msg: "" };
+const remKey = () => `lms-remind-${myId()}`;
+const remSkipKey = () => `lms-remind-skip-${myId()}`;
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
+let MSG = null;
+async function messagingMod() { if (!MSG) MSG = await import(FB + "firebase-messaging.js"); return MSG; }
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isInstalled = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+
+async function checkReminders() {
+  if (PREVIEW || !CFG.vapidKey || !myId()) { REM.state = "off"; return; }
+  if (!("serviceWorker" in navigator) || !("Notification" in window) || !("PushManager" in window)) {
+    REM.state = isIOS() && !isInstalled() ? "ios-install" : "unsupported"; return;
+  }
+  try { if (!(await (await messagingMod()).isSupported())) { REM.state = "unsupported"; return; } }
+  catch { REM.state = "unsupported"; return; }
+  if (Notification.permission === "denied") { REM.state = "blocked"; return; }
+  REM.state = lsGet(remKey()) && Notification.permission === "granted" ? "on" : "available";
+  if (REM.state === "on") refreshToken().catch(() => {});
+}
+async function pushToken() {
+  const reg = await navigator.serviceWorker.register("./sw.js");
+  await navigator.serviceWorker.ready;
+  const M = await messagingMod(), messaging = M.getMessaging(app);
+  const token = await M.getToken(messaging, { vapidKey: CFG.vapidKey, serviceWorkerRegistration: reg });
+  if (!REM.listening) {
+    REM.listening = true;
+    // With the app open, show the reminder ourselves (the phone only shows it when the app is closed).
+    M.onMessage(messaging, (m) => {
+      const n = m.notification || {};
+      reg.showNotification(n.title || "Last Man Standing", { body: n.body || "", icon: "icon-192.png", tag: "lms-reminder" }).catch(() => {});
+    });
+  }
+  return token;
+}
+async function saveToken(token) {
+  await setDoc(doc(db, "pushTokens", token), { playerId: myId(), site: location.origin + location.pathname, at: serverTimestamp(), ua: navigator.userAgent.slice(0, 120) });
+  lsSet(remKey(), token);
+}
+async function refreshToken() {
+  const token = await pushToken(), old = lsGet(remKey());
+  if (token !== old) { if (old) deleteDoc(doc(db, "pushTokens", old)).catch(() => {}); await saveToken(token); }
+}
+async function remindersOn() {
+  REM.busy = true; REM.msg = ""; renderReminders();
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { REM.state = perm === "denied" ? "blocked" : "available"; REM.msg = perm === "denied" ? "" : "Reminders weren't turned on. Tap the button again and choose Allow."; return; }
+    await saveToken(await pushToken());
+    REM.state = "on"; REM.msg = "";
+  } catch (e) {
+    REM.msg = "Couldn't turn on reminders. Check your signal and try again.";
+  } finally { REM.busy = false; renderReminders(); }
+}
+async function remindersOff() {
+  REM.busy = true; renderReminders();
+  const token = lsGet(remKey());
+  try {
+    if (token) await deleteDoc(doc(db, "pushTokens", token)).catch(() => {});
+    try { const M = await messagingMod(); await M.deleteToken(M.getMessaging(app)); } catch {}
+    lsSet(remKey(), null); REM.state = "available"; REM.msg = "Reminders are off.";
+  } finally { REM.busy = false; renderReminders(); }
+}
+function remindersHTML(where) {
+  const st = REM.state;
+  if (st === "off" || st === "unknown") return "";
+  const btn = (id, text, cls = "") => `<button class="btn small ${cls}" type="button" data-rem="${id}" ${REM.busy ? "disabled" : ""}>${text}</button>`;
+  const msg = REM.msg ? `<p class="note rem-msg">${esc(REM.msg)}</p>` : "";
+  if (st === "on") return `<p class="rem-line"><b>Reminders are on.</b> You'll get one 2 hours before picks close if you haven't picked.</p><div class="row">${btn("off", "Turn off reminders", "ghost")}</div>${where === "rules" ? msg : ""}`;
+  if (st === "available") return `<p class="rem-line"><b>Get a reminder</b> 2 hours before picks close, only if you haven't picked yet.</p><div class="row">${btn("on", "Turn on reminders", "go")}${where === "coupon" ? btn("skip", "Not now", "ghost") : ""}</div>${msg}`;
+  if (st === "ios-install") return `<p class="rem-line"><b>Want reminders on your iPhone?</b> Add this app to your home screen first: open it in Safari, tap Share, then Add to Home Screen. Open it from the new icon and turn reminders on there.</p>${where === "coupon" ? `<div class="row">${btn("skip", "Got it", "ghost")}</div>` : ""}`;
+  if (st === "blocked") return `<p class="rem-line"><b>Notifications are blocked</b> for this app. To get reminders, allow notifications for this site in your phone or browser settings, then reopen the app.</p>`;
+  return `<p class="rem-line">This browser can't show reminders. Try Chrome on Android, or add the app to your iPhone home screen.</p>`;
+}
+function renderReminders() {
+  const box = $("#remindBox"), rules = $("#remindRules"), p = me();
+  if (rules) rules.innerHTML = remindersHTML("rules") || `<p class="note">Reminders aren't available in this game.</p>`;
+  if (box) {
+    const offer = p && p.status === "alive" && !cfg().winner && ["available", "ios-install"].includes(REM.state) && !lsGet(remSkipKey());
+    const confirm = REM.state === "on" && box.dataset.justOn === "1";
+    box.hidden = !(offer || confirm);
+    box.innerHTML = offer || confirm ? `<div class="remind">${remindersHTML("coupon")}</div>` : "";
+  }
+  document.querySelectorAll("[data-rem]").forEach((b) => (b.onclick = () => {
+    const a = b.dataset.rem;
+    if (a === "on") { if (box) box.dataset.justOn = "1"; remindersOn(); }
+    else if (a === "off") { if (box) box.dataset.justOn = ""; remindersOff(); }
+    else if (a === "skip") { lsSet(remSkipKey(), "1"); renderReminders(); }
+  }));
+}
+
 /* ---------------------------------------------------------------- navigation */
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 function showTab(t) {

@@ -1,0 +1,9 @@
+{
+  "name": "last-man-standing-reminders",
+  "private": true,
+  "description": "Sends pick reminders for Last Man Standing. Run by GitHub Actions.",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

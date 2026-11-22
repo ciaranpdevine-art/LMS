@@ -116,6 +116,18 @@ service cloud.firestore {
         && gameNotStarted();
     }
 
+    // Reminder tokens: one per phone that turned reminders on. Players manage their own;
+    // the organiser can count them. The GitHub reminder job reads them with its admin key.
+    match /pushTokens/{token} {
+      allow read: if isAdmin() || (hasSession() && resource.data.playerId == session().playerId);
+      allow create, update: if hasSession()
+        && request.resource.data.playerId == session().playerId
+        && request.resource.data.keys().hasOnly(['playerId', 'site', 'at', 'ua'])
+        && request.resource.data.site is string && request.resource.data.site.size() < 300
+        && request.resource.data.ua is string && request.resource.data.ua.size() <= 120;
+      allow delete: if isAdmin() || (hasSession() && resource.data.playerId == session().playerId);
+    }
+
     // One document per nickname, so no two players can share one.
     match /nicknames/{name} {
       allow read: if true;

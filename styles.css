@@ -367,3 +367,11 @@ input:focus{border-color:var(--biro);outline:none}
 .override{margin-top:14px;padding:14px;border:2px solid var(--biro);border-radius:4px;background:#fff}
 .override h3{margin:0 0 4px}
 .override select{font-size:15px}
+
+/* reminders */
+.remind{background:var(--sheet);padding:14px 18px;box-shadow:0 2px 0 rgba(0,0,0,.18);border-left:5px solid var(--biro)}
+.remind .row,.rem-rules .row{margin-top:10px}
+.rem-line{margin:0;font-size:15px}
+.rem-rules .rem-line{margin-top:8px}
+.rem-msg{margin:8px 0 0}
+#remindCount:empty{display:none}

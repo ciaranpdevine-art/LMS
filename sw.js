@@ -1,8 +1,26 @@
+// Reminders: Firebase delivers push notifications to this service worker, which shows them
+// even when the app is closed. Tapping one opens the app.
+try {
+  importScripts(
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js'
+  );
+  firebase.initializeApp({
+    apiKey: 'AIzaSyC-Q0umosa7Ufgv9sgtL4agdD6dEZA-GkM',
+    authDomain: 'last-man-standing-661d6.firebaseapp.com',
+    projectId: 'last-man-standing-661d6',
+    storageBucket: 'last-man-standing-661d6.firebasestorage.app',
+    messagingSenderId: '478776403782',
+    appId: '1:478776403782:web:8bd16341bf831c8a722747',
+  });
+  firebase.messaging();
+} catch (e) { /* no signal on first install: reminders start next time */ }
+
 // Lets the app open with no signal. It always asks the server first (so
 // everyone gets the latest version straight away) and only falls back to
 // the copy saved on this device when offline. It never touches requests
 // to other sites, so Firebase data and live scores are unaffected.
-const CACHE_NAME = 'lms-offline-v1';
+const CACHE_NAME = 'lms-offline-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(['./'])).catch(() => {}));

@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
-<link rel="stylesheet" href="styles.css?v=15">
+<link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
 
@@ -62,6 +62,7 @@
   <div id="gameArea" hidden>
     <section data-pane="play">
       <div id="statusPanel"></div>
+      <div id="remindBox" hidden></div>
       <div id="roundPanel"></div>
     </section>
 
@@ -105,6 +106,8 @@
           <li><b>Your match gets postponed?</b> You survive that round, and the team still counts as used.</li>
           <li><b>Last one standing takes the pot.</b> No rebuys.</li>
         </ul>
+        <h3>Reminders</h3>
+        <div id="remindRules" class="rem-rules"><p class="note">Reminders aren't available here.</p></div>
         <h3>Keep it on your home screen</h3>
         <p class="sub">On iPhone, open this page in Safari, tap Share, then Add to Home Screen. On Android, open it in Chrome, tap ⋮, then Add to Home screen.</p>
       </div>
@@ -143,7 +146,7 @@
       </div>
 
       <div class="sheet"><h2>Codes</h2><div id="codeList"></div></div>
-      <div class="sheet"><h2>Players</h2><div id="playerList"></div><div id="overrideBox"></div></div>
+      <div class="sheet"><h2>Players</h2><p class="note" id="remindCount"></p><div id="playerList"></div><div id="overrideBox"></div></div>
 
       <div class="sheet">
         <h2>Fixtures and results</h2>
@@ -175,7 +178,7 @@
   </footer>
 </main>
 
-<script type="module" src="app.js?v=15"></script>
+<script type="module" src="app.js?v=16"></script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});}</script>
 </body>
 </html>
