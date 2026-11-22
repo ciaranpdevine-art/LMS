@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: reminders
@@ -30,6 +29,3 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
-      # Public repositories pause scheduled jobs after 60 days without changes; this keeps it running.
-      - uses: gautamkrishnar/keepalive-workflow@v2
-        if: github.event_name == 'schedule'
