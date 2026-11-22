@@ -1,8 +1,10 @@
-// Last Man Standing: reminder sender, run by GitHub Actions every 15 minutes
-// (.github/workflows/reminders.yml). When the next gameweek's picks close within 2 hours,
-// it sends a push notification to every player who is still in and hasn't picked yet.
-// Each gameweek is reminded once. Run it by hand with "test" to send a test to everyone
-// who has reminders turned on.
+// Last Man Standing: notification sender, run by GitHub Actions every 15 minutes
+// (.github/workflows/reminders.yml).
+// 1. Results: when the organiser settles a gameweek, each player gets their own result plus
+//    how many were knocked out and how many are still standing. Sent once per gameweek.
+// 2. Reminders: when the next gameweek's picks close within 2 hours, players who are still in
+//    and haven't picked get a reminder. Sent once per gameweek.
+// Run it by hand with "test" to send a test to everyone who has notifications turned on.
 
 const admin = require("firebase-admin");
 
@@ -35,27 +37,76 @@ function connect() {
   return admin.firestore();
 }
 
-async function send(db, tokens, title, body) {
-  if (!tokens.length) return { sent: 0, failed: 0 };
+// messages: [{ token, title, body }]
+async function sendEach(db, messages) {
   let sent = 0, failed = 0;
-  for (let i = 0; i < tokens.length; i += 500) {
-    const chunk = tokens.slice(i, i + 500);
-    const site = chunk[0].site;
-    const webpush = { notification: { title, body, tag: "lms-reminder", renotify: true } };
-    if (site) { webpush.notification.icon = new URL("icon-192.png", site).href; webpush.fcmOptions = { link: site }; }
-    const data = { title, body, link: site || "" };
-    const res = await admin.messaging().sendEachForMulticast({ tokens: chunk.map((t) => t.id), notification: { title, body }, data, webpush: { ...webpush, headers: { Urgency: "high", TTL: "7200" } } });
+  for (let i = 0; i < messages.length; i += 500) {
+    const chunk = messages.slice(i, i + 500);
+    const res = await admin.messaging().sendEach(chunk.map((m) => {
+      const webpush = { notification: { title: m.title, body: m.body, tag: m.tag || "lms", renotify: true }, headers: { Urgency: "high", TTL: "21600" } };
+      if (m.token.site) { webpush.notification.icon = new URL("icon-192.png", m.token.site).href; webpush.fcmOptions = { link: m.token.site }; }
+      return { token: m.token.id, notification: { title: m.title, body: m.body }, data: { title: m.title, body: m.body, link: m.token.site || "" }, webpush };
+    }));
     res.responses.forEach((r, j) => {
       if (r.success) { sent++; return; }
       failed++;
       const code = r.error && r.error.code;
       // The phone turned notifications off or the app was removed: forget that token.
       if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
-        db.doc(`pushTokens/${chunk[j].id}`).delete().catch(() => {});
+        db.doc(`pushTokens/${chunk[j].token.id}`).delete().catch(() => {});
       } else console.warn("Send failed:", code, r.error && r.error.message);
     });
   }
   return { sent, failed };
+}
+const send = (db, tokens, title, body, tag) => sendEach(db, tokens.map((token) => ({ token, title, body, tag })));
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function teamName(round, code) {
+  const f = (round.fixtures || []).find((x) => x.home === code || x.away === code);
+  return f ? (f.home === code ? f.homeName : f.awayName) : code;
+}
+
+// After the organiser settles a gameweek: tell each player how they got on.
+async function sendResults(db, tokens, cfg) {
+  const all = (await db.collection("rounds").get()).docs.map((d) => d.data()).filter((r) => typeof r.gw === "number" && r.processed);
+  const r = all.sort((a, b) => b.gw - a.gw)[0];
+  if (!r) return;
+  if (r.resultsNotified) { console.log(`Results for Gameweek ${r.gw} already sent.`); return; }
+  const settled = ms(r.processedAt);
+  if (!(settled > Date.now() - 48 * 3600e3)) { console.log(`Gameweek ${r.gw} was settled before results notifications existed (or over 2 days ago): not sending.`); return; }
+
+  const players = Object.fromEntries((await db.collection("players").get()).docs.map((d) => [d.id, d.data()]));
+  const counted = Object.entries(players).filter(([, p]) => p.status !== "removed");
+  const standing = counted.filter(([, p]) => p.status === "alive").length;
+  const out = counted.filter(([, p]) => p.status === "out" && p.outGw === r.gw).length;
+  const lives = Math.max(1, Math.min(3, Number(cfg.lives) || 1));
+  const winnerId = cfg.winner && cfg.wonGw === r.gw ? cfg.winner : null;
+  const summary = r.everyoneSurvived ? `Everyone left went out, so everyone survives. ${plural(standing, "player is", "players are")} still standing.`
+    : `${out ? plural(out, "player", "players") + " knocked out" : "Nobody knocked out"}, ${standing} still standing.`;
+  const title = `Last Man Standing: Gameweek ${r.gw} results`;
+
+  const messages = tokens.map((token) => {
+    const p = players[token.playerId], res = r.results && r.results[token.playerId];
+    if (!p) return null;
+    if (winnerId) {
+      return { token, title: "Last Man Standing: we have a winner!", tag: "lms-result",
+        body: token.playerId === winnerId ? `You're the last one standing! You've won Last Man Standing.` : `${players[winnerId] ? players[winnerId].nickname : "Someone"} is the last one standing after Gameweek ${r.gw}.` };
+    }
+    let body = `Gameweek ${r.gw} is settled. ${summary}`;
+    if (res) {
+      const team = res.team ? teamName(r, res.team) : null;
+      const what = res.res === "D" ? "drew" : res.res === "L" ? "lost" : res.res === "X" ? "didn't play" : "";
+      if (p.status === "out" && p.outGw === r.gw) body = `${team ? `${team} ${what}` : "No pick"} in Gameweek ${r.gw}, so you're out. ${summary}`;
+      else if (res.lifeLost) { const left = Math.max(0, lives - (Number(p.lost) || 0)); body = `${team ? `${team} ${what}` : "No pick"} in Gameweek ${r.gw}, so you lost a life. ${plural(left, "life", "lives")} left. ${summary}`; }
+      else if (p.status === "alive") body = `You're through Gameweek ${r.gw}! ${summary}`;
+    }
+    return { token, title, body, tag: "lms-result" };
+  }).filter(Boolean);
+
+  const sent = await sendEach(db, messages);
+  await db.doc(`rounds/${r.gw}`).set({ resultsNotified: true }, { merge: true });
+  console.log(`Gameweek ${r.gw} results sent to ${sent.sent} phone(s), ${sent.failed} failed.`);
 }
 
 async function main() {
@@ -69,13 +120,14 @@ async function main() {
   console.log(`${tokens.length} phone(s) have reminders on.`);
 
   if (process.env.TEST === "true") {
-    const r = await send(db, tokens, "Last Man Standing", "Test reminder: notifications are working.");
+    const r = await send(db, tokens, "Last Man Standing", "Test reminder: notifications are working.", "lms-test");
     console.log(`Test sent to ${r.sent} phone(s), ${r.failed} failed.`);
     return;
   }
 
   const cfgSnap = await db.doc("config/game").get();
   const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  await sendResults(db, tokens, cfg);
   if (cfg.winner) { console.log("The game is over: no reminders."); return; }
   const startGw = Number(cfg.startGw) || 1;
   const now = Date.now();
@@ -95,7 +147,7 @@ async function main() {
   const missing = new Set([...alive].filter((id) => !picked.has(id)));
   const targets = tokens.filter((t) => missing.has(t.playerId));
   const body = `Picks for Gameweek ${next.gw} close at ${ukTime(ms(next.deadline))} ${ukDay(ms(next.deadline))}. You haven't picked yet.`;
-  const r = await send(db, targets, "Last Man Standing: 2 hours to go", body);
+  const r = await send(db, targets, "Last Man Standing: 2 hours to go", body, "lms-reminder");
   await db.doc(`rounds/${next.gw}`).set({ reminded2h: true, remindedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   console.log(`${missing.size} player(s) still to pick. Reminder sent to ${r.sent} phone(s), ${r.failed} failed.`);
 }

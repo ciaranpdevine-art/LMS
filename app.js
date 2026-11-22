@@ -784,7 +784,7 @@ async function settleRound(r) {
     if (out.includes(id)) Object.assign(upd, { status: "out", outGw: r.gw, outResult: results[id] });
     if (Object.keys(upd).length) b.update(doc(db, "players", id), upd);
   }
-  b.update(doc(db, "rounds", String(r.gw)), { processed: true, results, everyoneSurvived: everyone });
+  b.update(doc(db, "rounds", String(r.gw)), { processed: true, processedAt: serverTimestamp(), results, everyoneSurvived: everyone });
   const left = alive.filter((id) => !out.includes(id));
   if (left.length === 1 && counted.length > 1) b.set(doc(db, "config", "game"), { winner: left[0], wonGw: r.gw }, { merge: true });
   await b.commit();
@@ -990,8 +990,8 @@ function remindersHTML(where) {
   if (st === "off" || st === "unknown") return "";
   const btn = (id, text, cls = "") => `<button class="btn small ${cls}" type="button" data-rem="${id}" ${REM.busy ? "disabled" : ""}>${text}</button>`;
   const msg = REM.msg ? `<p class="note rem-msg">${esc(REM.msg)}</p>` : "";
-  if (st === "on") return `<p class="rem-line"><b>Reminders are on.</b> You'll get one 2 hours before picks close if you haven't picked.</p><div class="row">${btn("off", "Turn off reminders", "ghost")}</div>${where === "rules" ? msg : ""}`;
-  if (st === "available") return `<p class="rem-line"><b>Get a reminder</b> 2 hours before picks close, only if you haven't picked yet.</p><div class="row">${btn("on", "Turn on reminders", "go")}${where === "coupon" ? btn("skip", "Not now", "ghost") : ""}</div>${msg}`;
+  if (st === "on") return `<p class="rem-line"><b>Notifications are on.</b> You'll get a reminder 2 hours before picks close if you haven't picked, and your result when each gameweek is settled.</p><div class="row">${btn("off", "Turn off reminders", "ghost")}</div>${where === "rules" ? msg : ""}`;
+  if (st === "available") return `<p class="rem-line"><b>Get notifications:</b> a reminder 2 hours before picks close if you haven't picked, and your result when each gameweek is settled.</p><div class="row">${btn("on", "Turn on reminders", "go")}${where === "coupon" ? btn("skip", "Not now", "ghost") : ""}</div>${msg}`;
   if (st === "ios-install") return `<p class="rem-line"><b>Want reminders on your iPhone?</b> Add this app to your home screen first: open it in Safari, tap Share, then Add to Home Screen. Open it from the new icon and turn reminders on there.</p>${where === "coupon" ? `<div class="row">${btn("skip", "Got it", "ghost")}</div>` : ""}`;
   if (st === "blocked") return `<p class="rem-line"><b>Notifications are blocked</b> for this app. To get reminders, allow notifications for this site in your phone or browser settings, then reopen the app.</p>`;
   return `<p class="rem-line">This browser can't show reminders. Try Chrome on Android, or add the app to your iPhone home screen.</p>`;
