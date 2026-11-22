@@ -14,8 +14,23 @@ const ukDay = (t) => new Date(t).toLocaleDateString("en-GB", { timeZone: "Europe
 function connect() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) return null;
+  // Copying on a phone can add line breaks, curly quotes or stray text around the key: undo that.
+  let t = raw.replace(/^\uFEFF/, "").replace(/[\u201C\u201D\u201E\u2033]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/[\r\n\u2028\u2029]+/g, "").trim();
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
   let sa;
-  try { sa = JSON.parse(raw); } catch { throw new Error("The FIREBASE_SERVICE_ACCOUNT secret isn't valid. Paste the whole key file, from the first { to the last }."); }
+  try { sa = JSON.parse(t); } catch (e) {
+    // Describe the problem without printing any of the secret (the log is public).
+    const checks = [
+      `${raw.length} characters long (a full key is about 2,300)`,
+      a < 0 ? "no { found" : "starts with {",
+      b < 0 ? "no closing } found" : "ends with }",
+      /"private_key"/.test(t) ? "has private_key" : "private_key missing",
+      /"client_email"/.test(t) ? "has client_email" : "client_email missing",
+    ];
+    throw new Error(`The FIREBASE_SERVICE_ACCOUNT secret isn't a complete key file. What it looks like: ${checks.join(", ")}. Copy the whole file again, from the first { to the last }, and update the secret.`);
+  }
+  if (!sa.private_key || !sa.client_email || !sa.project_id) throw new Error("The FIREBASE_SERVICE_ACCOUNT secret is missing parts of the key (private_key, client_email or project_id). Copy the whole file again and update the secret.");
   admin.initializeApp({ credential: admin.credential.cert(sa), projectId: sa.project_id });
   return admin.firestore();
 }
