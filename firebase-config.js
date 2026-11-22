@@ -11,4 +11,4 @@ export const firebaseConfig = {
 
 // Web Push key for reminders: Firebase console > Project settings > Cloud Messaging >
 // Web Push certificates > Key pair. Leave empty to hide reminders.
-export const vapidKey = "";
+export const vapidKey = "BNnIrEwJJOKWVPpPbfHXQzFTXKky5hUD_CMnq7GmLOygDDhosxCBZwWe5U5gUnzAfgUQnMg_RjeRJJw2F-4DHjw";
