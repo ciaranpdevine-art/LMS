@@ -381,3 +381,13 @@ input:focus{border-color:var(--biro);outline:none}
 .past{list-style:none;margin:8px 0 0;padding:0;display:grid}
 .past li{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--sheet-rule)}
 .past li:last-child{border-bottom:0}
+
+/* organiser tabs */
+.orgtabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;background:var(--sheet);box-shadow:0 2px 0 rgba(0,0,0,.18),0 8px 18px -12px rgba(0,0,0,.5);border-radius:4px}
+.orgtabs button{position:relative;background:none;border:0;border-radius:4px;padding:10px 4px;font-weight:800;font-stretch:105%;font-size:14px;color:var(--muted)}
+.orgtabs button[aria-selected="true"]{background:var(--text);color:var(--sheet)}
+.orgtabs .badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:5px;border-radius:9px;background:var(--stamp);color:#fff;font-size:11px;font-weight:800;vertical-align:1px}
+#orgTools{display:grid;gap:18px}
+[data-orgpane]{display:grid;gap:18px}
+[data-orgpane][hidden]{display:none!important}
+.orgtabs .badge{position:absolute;top:-8px;right:-2px;margin:0;box-shadow:0 0 0 2px var(--sheet)}

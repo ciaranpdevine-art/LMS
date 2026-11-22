@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,700..900&family=Gochi+Hand&display=swap">
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
 
@@ -135,42 +135,56 @@
     </div>
 
     <div id="orgTools" hidden>
-      <div class="sheet">
-        <h2>Give someone a code</h2>
-        <p class="sub">Once they've paid, create their code and send them the message. Each code works for one person.</p>
-        <form id="codeForm" class="row">
-          <div class="field"><label for="codeLabel">Who's it for? Only you see this</label><input id="codeLabel" maxlength="40" required placeholder="Dave from work"></div>
-          <button class="btn go" type="submit">Create code</button>
-        </form>
-        <div class="msg" id="codeMsg" role="status"></div>
-        <div id="codeShare"></div>
-      </div>
+      <nav class="orgtabs" aria-label="Organiser sections">
+        <button type="button" data-orgtab="results" aria-selected="true">Results<span class="badge" id="obResults" hidden></span></button>
+        <button type="button" data-orgtab="players" aria-selected="false">Players<span class="badge" id="obPlayers" hidden></span></button>
+        <button type="button" data-orgtab="codes" aria-selected="false">Codes</button>
+        <button type="button" data-orgtab="game" aria-selected="false">Game</button>
+      </nav>
 
-      <div class="sheet"><h2>Codes</h2><div id="codeList"></div></div>
-      <div class="sheet"><h2>Players</h2><p class="note" id="remindCount"></p><div id="playerList"></div><div id="overrideBox"></div></div>
+      <section data-orgpane="results">
+        <div class="sheet">
+          <h2>Fixtures and results</h2>
+          <p class="sub">After each match, open the gameweek and pick the result. Once every match in a gameweek has a result, players are knocked out automatically.</p>
+          <div class="msg" id="syncMsg" role="status"></div>
+          <div id="roundAdmin"></div>
+        </div>
+      </section>
 
-      <div class="sheet">
-        <h2>Fixtures and results</h2>
-        <p class="sub">After each match, open the gameweek and pick the result. Once every match in a gameweek has a result, players are knocked out automatically.</p>
-        <div class="msg" id="syncMsg" role="status"></div>
-        <div id="roundAdmin"></div>
-      </div>
+      <section data-orgpane="players" hidden>
+        <div class="sheet"><h2>Players</h2><p class="note" id="remindCount"></p><div id="playerList"></div><div id="overrideBox"></div></div>
+      </section>
 
-      <div class="sheet">
-        <h2>Settings</h2>
-        <form id="setForm" class="row">
-          <div class="field"><label for="setSeason">Season</label><input id="setSeason" maxlength="20" placeholder="2026/27"></div>
-          <div class="field"><label for="setStart">First gameweek</label><input id="setStart" type="number" min="1" max="38" required></div>
-          <div class="field"><label for="setFee">Entry fee (£)</label><input id="setFee" type="number" min="0" step="1" required></div>
-          <div class="field"><label for="setLives">Lives each</label><select id="setLives"><option value="1">1 (straight knock-out)</option><option value="2">2</option><option value="3">3</option></select></div>
-          <button class="btn" type="submit">Save</button>
-        </form>
-        <p class="note">Set these before anyone joins. Changing the first gameweek once the game has started will muddle the table.</p>
-        <p class="note" id="livesNote"></p>
-        <div class="msg" id="setMsg" role="status"></div>
-      </div>
+      <section data-orgpane="codes" hidden>
+        <div class="sheet">
+          <h2>Give someone a code</h2>
+          <p class="sub">Once they've paid, create their code and send them the message. Each code works for one person.</p>
+          <form id="codeForm" class="row">
+            <div class="field"><label for="codeLabel">Who's it for? Only you see this</label><input id="codeLabel" maxlength="40" required placeholder="Dave from work"></div>
+            <button class="btn go" type="submit">Create code</button>
+          </form>
+          <div class="msg" id="codeMsg" role="status"></div>
+          <div id="codeShare"></div>
+        </div>
+        <div class="sheet"><h2>Codes</h2><div id="codeList"></div></div>
+      </section>
 
-      <div class="sheet"><h2>New game</h2><div id="newGame"></div></div>
+      <section data-orgpane="game" hidden>
+        <div class="sheet">
+          <h2>Settings</h2>
+          <form id="setForm" class="row">
+            <div class="field"><label for="setSeason">Season</label><input id="setSeason" maxlength="20" placeholder="2026/27"></div>
+            <div class="field"><label for="setStart">First gameweek</label><input id="setStart" type="number" min="1" max="38" required></div>
+            <div class="field"><label for="setFee">Entry fee (£)</label><input id="setFee" type="number" min="0" step="1" required></div>
+            <div class="field"><label for="setLives">Lives each</label><select id="setLives"><option value="1">1 (straight knock-out)</option><option value="2">2</option><option value="3">3</option></select></div>
+            <button class="btn" type="submit">Save</button>
+          </form>
+          <p class="note">Set these before anyone joins. Changing the first gameweek once the game has started will muddle the table.</p>
+          <p class="note" id="livesNote"></p>
+          <div class="msg" id="setMsg" role="status"></div>
+        </div>
+        <div class="sheet"><h2>New game</h2><div id="newGame"></div></div>
+      </section>
     </div>
   </div>
 
@@ -181,7 +195,7 @@
   </footer>
 </main>
 
-<script type="module" src="app.js?v=21"></script>
+<script type="module" src="app.js?v=22"></script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});}</script>
 </body>
 </html>

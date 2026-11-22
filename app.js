@@ -594,6 +594,7 @@ function renderOrg() {
   $("#playerList").querySelectorAll("[data-override]").forEach((b) => (b.onclick = () => openOverride(b.dataset.override)));
   $("#playerList").querySelectorAll("[data-paid]").forEach((b) => (b.onclick = () => updateDoc(doc(db, "players", b.dataset.paid), { status: "alive" })));
   renderNewGame();
+  renderOrgBadges();
   watchTokens();
   const rc = $("#remindCount");
   if (rc) {
@@ -1117,6 +1118,24 @@ function renderReminders() {
     else if (a === "off") { if (box) box.dataset.justOn = ""; remindersOff(); }
     else if (a === "skip") { lsSet(remSkipKey(), "1"); renderReminders(); }
   }));
+}
+
+/* ---------------------------------------------------------------- organiser tabs */
+function showOrgTab(t) {
+  document.querySelectorAll("[data-orgtab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.orgtab === t)));
+  document.querySelectorAll("[data-orgpane]").forEach((p) => (p.hidden = p.dataset.orgpane !== t));
+  lsSet("lms-orgtab", t);
+}
+document.querySelectorAll("[data-orgtab]").forEach((b) => b.addEventListener("click", () => { showOrgTab(b.dataset.orgtab); window.scrollTo({ top: $("#orgTools").offsetTop - 8 }); }));
+{ const t = lsGet("lms-orgtab"); if (t && document.querySelector(`[data-orgpane="${t}"]`)) showOrgTab(t); }
+// Small counts on the tabs for things that need the organiser.
+function renderOrgBadges() {
+  const now = Date.now();
+  const waiting = rounds().filter((r) => !r.processed && ms(r.deadline) <= now).length;
+  const unpaid = Object.values(S.players).filter((p) => p.status === "unpaid").length;
+  const set = (id, n, label) => { const el = $(id); if (!el) return; el.hidden = !n; el.textContent = n || ""; el.title = n ? label : ""; };
+  set("#obResults", waiting, `${waiting} gameweek${waiting === 1 ? "" : "s"} waiting for results`);
+  set("#obPlayers", unpaid, `${unpaid} player${unpaid === 1 ? "" : "s"} not paid yet`);
 }
 
 /* ---------------------------------------------------------------- navigation */
