@@ -43,7 +43,8 @@ async function send(db, tokens, title, body) {
     const site = chunk[0].site;
     const webpush = { notification: { title, body, tag: "lms-reminder", renotify: true } };
     if (site) { webpush.notification.icon = new URL("icon-192.png", site).href; webpush.fcmOptions = { link: site }; }
-    const res = await admin.messaging().sendEachForMulticast({ tokens: chunk.map((t) => t.id), notification: { title, body }, webpush });
+    const data = { title, body, link: site || "" };
+    const res = await admin.messaging().sendEachForMulticast({ tokens: chunk.map((t) => t.id), notification: { title, body }, data, webpush: { ...webpush, headers: { Urgency: "high", TTL: "7200" } } });
     res.responses.forEach((r, j) => {
       if (r.success) { sent++; return; }
       failed++;
