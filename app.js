@@ -155,7 +155,11 @@ function errText(e, fallback) {
 }
 async function copyText(text, btn) {
   try { await navigator.clipboard.writeText(text); if (btn) { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = o), 1500); } }
-  catch { if (btn) btn.textContent = "Select and copy the text above"; }
+  catch {
+    const t = document.createElement("textarea"); t.value = text; t.setAttribute("readonly", ""); t.style.cssText = "position:fixed;opacity:0;top:0"; document.body.appendChild(t); t.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {} t.remove();
+    if (btn) { const o = btn.textContent; btn.textContent = ok ? "Copied" : "Press and hold to copy"; setTimeout(() => (btn.textContent = o), 2000); }
+  }
 }
 
 /* ---------------------------------------------------------------- game state */
@@ -574,9 +578,9 @@ function renderOrg() {
   $("#codeList").innerHTML = codes.length ? `<div class="list">${codes.map(([code, c]) => {
     const p = c.playerId && S.players[c.playerId];
     const state = c.claimed ? `joined as ${esc(p?.nickname || c.nickname)}${p?.status === "removed" ? " (switched off)" : ""}` : "not used yet";
-    return `<div class="item"><div class="who-l"><b class="mono">${fmtCode(code)}</b><span class="note">${esc(c.label)} · ${state}</span></div><div class="row">${c.claimed ? "" : `<button class="btn small ghost" data-share="${esc(code)}">Copy message</button><button class="btn small ghost" data-delcode="${esc(code)}">Delete</button>`}</div></div>`;
+    return `<div class="item"><div class="who-l"><b class="mono">${fmtCode(code)}</b><span class="note">${esc(c.label)} · ${state}</span></div><div class="row">${c.claimed ? "" : `<button class="btn small ghost" data-copymsg="${esc(code)}">Copy message</button><button class="btn small ghost" data-copylink="1">Copy link</button><button class="btn small ghost" data-delcode="${esc(code)}">Delete</button>`}</div></div>`;
   }).join("")}</div>` : `<div class="empty">No codes yet. Create one above when someone pays.</div>`;
-  $("#codeList").querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => copyText(shareText(b.dataset.share), b)));
+  wireShare($("#codeList"));
   $("#codeList").querySelectorAll("[data-delcode]").forEach((b) => (b.onclick = () => twoTap(b, () => deleteDoc(doc(db, "codes", b.dataset.delcode)))));
 
   // players
@@ -622,7 +626,18 @@ function twoTap(btn, fn) {
 }
 const fmtCode = (c) => (c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c);
 function shareText(code) {
-  return `You're in Last Man Standing, our Premier League last-one-standing game.\n\nYour code: ${fmtCode(code)}\nOpen ${location.origin + location.pathname}, enter the code and choose a nickname. Then pick a team each week. Keep the code to yourself: it's your login.`;
+  return `You're in Last Man Standing, our Premier League last-one-standing game.\n\nYour code: ${fmtCode(code)}\n\nOpen the game here:\n${siteLink()}\n\nEnter the code and choose a nickname. Then pick a team each week. Keep the code to yourself: it's your login.`;
+}
+const siteLink = () => location.origin + location.pathname;
+function shareButtons(code) {
+  const link = siteLink();
+  return `<div class="sharelink"><a href="${esc(link)}" target="_blank" rel="noopener">${esc(link)}</a></div>
+  <div class="row" style="margin-top:8px">${navigator.share ? `<button class="btn small" type="button" data-sendmsg="${esc(code)}">Send…</button>` : ""}<button class="btn small${navigator.share ? " ghost" : ""}" type="button" data-copymsg="${esc(code)}">Copy message</button><button class="btn small ghost" type="button" data-copylink="1">Copy link</button></div>`;
+}
+function wireShare(root) {
+  root.querySelectorAll("[data-copymsg]").forEach((b) => (b.onclick = () => copyText(shareText(b.dataset.copymsg), b)));
+  root.querySelectorAll("[data-copylink]").forEach((b) => (b.onclick = () => copyText(siteLink(), b)));
+  root.querySelectorAll("[data-sendmsg]").forEach((b) => (b.onclick = () => navigator.share({ text: shareText(b.dataset.sendmsg) }).catch(() => {})));
 }
 function newCode() {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = crypto.getRandomValues(new Uint8Array(8));
@@ -975,8 +990,8 @@ $("#codeForm").addEventListener("submit", async (ev) => {
   try {
     await setDoc(doc(db, "codes", code), { label, playerId: newId(), claimed: false, createdAt: serverTimestamp() });
     $("#codeLabel").value = ""; m.className = "msg"; m.textContent = `Code for ${label}: ${fmtCode(code)}. Send them this:`;
-    $("#codeShare").innerHTML = `<div class="share" id="shareBox">${esc(shareText(code))}</div><button class="btn small" id="copyShare" type="button" style="margin-top:8px">Copy message</button>`;
-    $("#copyShare").onclick = () => copyText(shareText(code), $("#copyShare"));
+    $("#codeShare").innerHTML = `<div class="share" id="shareBox">${esc(shareText(code))}</div>${shareButtons(code)}`;
+    wireShare($("#codeShare"));
   } catch (e) { m.className = "msg err"; m.textContent = "That code didn't save. Check you're still signed in as organiser."; }
 });
 $("#setForm").addEventListener("submit", async (ev) => {

@@ -221,7 +221,7 @@ input:focus{border-color:var(--biro);outline:none}
 .item .row{margin-top:0}
 .mono{font-weight:900;font-stretch:130%;letter-spacing:.05em}
 .empty{padding:18px;border:2px dashed var(--sheet-rule);border-radius:4px;color:var(--muted);text-align:center;margin-top:12px}
-.share{background:var(--coupon);color:var(--ink);padding:14px;margin-top:10px;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+.share{-webkit-user-select:text;user-select:text;background:var(--coupon);color:var(--ink);padding:14px;margin-top:10px;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
 .score{width:58px;text-align:center;padding:8px 4px}
 
 /* ---------- footer ---------- */
@@ -391,3 +391,6 @@ input:focus{border-color:var(--biro);outline:none}
 [data-orgpane]{display:grid;gap:18px}
 [data-orgpane][hidden]{display:none!important}
 .orgtabs .badge{position:absolute;top:-8px;right:-2px;margin:0;box-shadow:0 0 0 2px var(--sheet)}
+
+.sharelink{margin-top:8px;font-size:15px;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+.sharelink a{color:var(--biro);font-weight:700;text-decoration:underline}
