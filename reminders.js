@@ -4,6 +4,8 @@
 //    how many were knocked out and how many are still standing. Sent once per gameweek.
 // 2. Reminders: when the next gameweek's picks close within 2 hours, players who are still in
 //    and haven't picked get a reminder. Sent once per gameweek.
+// 3. Picks closed: when a gameweek's deadline passes, each player still in is told which team
+//    they're on (or that they missed the deadline). Sent once per gameweek.
 // Run it by hand with "test" to send a test to everyone who has notifications turned on.
 
 const admin = require("firebase-admin");
@@ -109,6 +111,48 @@ async function sendResults(db, tokens, cfg) {
   console.log(`Gameweek ${r.gw} results sent to ${sent.sent} phone(s), ${sent.failed} failed.`);
 }
 
+// When a gameweek's picks close: tell each player still in which team they're on.
+async function sendClosed(db, tokens, cfg) {
+  const now = Date.now(), startGw = Number(cfg.startGw) || 1;
+  const r = (await db.collection("rounds").get()).docs.map((d) => d.data())
+    .filter((x) => typeof x.gw === "number" && x.gw >= startGw && ms(x.deadline) <= now)
+    .sort((a, b) => b.gw - a.gw)[0];
+  if (!r || r.closedNotified || r.processed) return;
+  // Only for a deadline in the last 12 hours, so old gameweeks never trigger it.
+  if (now - ms(r.deadline) > 12 * 3600e3) { await db.doc(`rounds/${r.gw}`).set({ closedNotified: true }, { merge: true }); return; }
+
+  const players = Object.fromEntries((await db.collection("players").get()).docs.map((d) => [d.id, d.data()]));
+  const picks = Object.fromEntries((await db.collection(`rounds/${r.gw}/picks`).get()).docs.map((d) => [d.id, d.data()]));
+  const lives = Math.max(1, Math.min(3, Number(cfg.lives) || 1));
+  const stillIn = Object.values(players).filter((p) => p.status === "alive").length;
+  const pickedCount = Object.keys(picks).filter((id) => players[id] && players[id].status === "alive").length;
+  const title = `Last Man Standing: Gameweek ${r.gw} picks closed`;
+
+  const messages = tokens.map((token) => {
+    const p = players[token.playerId];
+    if (!p || p.status !== "alive") return null;
+    const pick = picks[token.playerId];
+    if (pick && pick.team) {
+      const f = (r.fixtures || []).find((x) => x.home === pick.team || x.away === pick.team);
+      const team = pick.teamName || teamName(r, pick.team);
+      let vs = "";
+      if (f) {
+        const opp = f.home === pick.team ? `${f.awayName} at home` : `${f.homeName} away`;
+        const k = ms(f.kickoff);
+        vs = ` against ${opp}${Number.isNaN(k) ? "" : `, ${ukDay(k)} ${ukTime(k)}`}`;
+      }
+      return { token, title, tag: "lms-closed", body: `You're on ${team}${vs}. They need to win for you to go through. ${pickedCount} of ${stillIn} players picked. Good luck!` };
+    }
+    const left = lives - (Number(p.lost) || 0);
+    const cost = left <= 1 ? "you'll be out" : "you'll lose a life";
+    return { token, title, tag: "lms-closed", body: `You didn't pick a team for Gameweek ${r.gw}, so it counts as a defeat (${cost}). Message the organiser straight away if that's a mistake.` };
+  }).filter(Boolean);
+
+  const sent = await sendEach(db, messages);
+  await db.doc(`rounds/${r.gw}`).set({ closedNotified: true }, { merge: true });
+  console.log(`Gameweek ${r.gw} picks-closed message sent to ${sent.sent} phone(s), ${sent.failed} failed.`);
+}
+
 // When the organiser starts a new game, tell everyone with notifications on.
 async function announceNewGame(db, tokens, cfg) {
   const n = Number(cfg.game) || 1;
@@ -144,6 +188,7 @@ async function main() {
   await sendResults(db, tokens, cfg);
   await announceNewGame(db, tokens, cfg);
   if (cfg.winner) { console.log("The game is over: no reminders."); return; }
+  await sendClosed(db, tokens, cfg);
   const startGw = Number(cfg.startGw) || 1;
   const now = Date.now();
   const rounds = (await db.collection("rounds").get()).docs.map((d) => d.data())
