@@ -394,3 +394,12 @@ input:focus{border-color:var(--biro);outline:none}
 
 .sharelink{margin-top:8px;font-size:15px;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
 .sharelink a{color:var(--biro);font-weight:700;text-decoration:underline}
+.pickchart{margin:16px 0 4px;padding:14px 14px 10px;background:var(--chalk);border:1px solid var(--sheet-rule);border-radius:4px}
+.pickchart h3{margin:0 0 10px;font-size:15px;font-weight:800;font-stretch:110%;display:flex;justify-content:space-between;gap:8px}
+.pickchart h3 span{font-size:13px;font-weight:600;color:var(--muted)}
+.pc-row{display:grid;grid-template-columns:44px 1fr 24px;align-items:center;gap:8px;margin:5px 0}
+.pc-team{font-weight:800;font-size:13px;font-stretch:110%}
+.pc-track{height:14px;background:var(--sheet-rule);border-radius:3px;overflow:hidden}
+.pc-bar{display:block;height:100%;border-radius:3px;background:var(--biro)}
+.pc-bar.W{background:var(--win)}.pc-bar.D{background:var(--draw)}.pc-bar.L,.pc-bar.N,.pc-bar.X{background:var(--stamp)}.pc-bar.P{background:var(--muted)}
+.pc-n{font-weight:800;font-size:14px;text-align:right}

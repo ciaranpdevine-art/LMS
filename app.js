@@ -496,10 +496,29 @@ function renderTable() {
     return `<li class="${cls}${open ? " open" : ""}"><button class="prow" type="button" data-player="${esc(id)}" aria-expanded="${open}"><span class="nm">${esc(p.nickname)}${id === myId() ? `<span class="you">you</span>` : ""}</span><span class="tag">${tag}</span><span class="chev" aria-hidden="true"></span></button>${hist ? `<div class="hist">${hist}</div>` : ""}${open ? playerDetail(id) : ""}</li>`;
   }).join("");
   const notes = shown.filter((r) => r.everyoneSurvived).map((r) => `<p class="board-note">Gameweek ${r.gw}: everyone left went out, so everyone survived.</p>`).join("");
-  el.innerHTML = `<ul class="board">${rows}</ul>${notes}`;
+  el.innerHTML = `${pickChart(shown[shown.length - 1], list)}<ul class="board">${rows}</ul>${notes}`;
   el.querySelectorAll("[data-player]").forEach((b) => (b.onclick = () => { S.openPlayer = S.openPlayer === b.dataset.player ? null : b.dataset.player; renderTable(); }));
 }
 
+// Small bar chart of who picked what in the latest gameweek whose picks are public.
+function pickChart(r, list) {
+  if (!r) return "";
+  const counts = {};
+  let total = 0, none = 0;
+  list.forEach(([id, p]) => {
+    if (p.status === "out" && p.outGw < r.gw) return;
+    if (r.processed && r.results && !r.results[id]) return;
+    const pk = pickOf(r.gw, id);
+    if (!pk) { none++; total++; return; }
+    const c = counts[pk.team] || (counts[pk.team] = { n: 0, name: pk.teamName || teamName(r, pk.team), res: resultOf(r, id) });
+    c.n++; total++;
+  });
+  const bars = Object.entries(counts).sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name));
+  if (!bars.length) return "";
+  const max = Math.max(...bars.map(([, c]) => c.n), none);
+  const bar = (label, n, cls, title) => `<div class="pc-row" title="${esc(title)}"><span class="pc-team">${esc(label)}</span><span class="pc-track"><span class="pc-bar ${cls}" style="width:${Math.max(6, (n / max) * 100)}%"></span></span><span class="pc-n">${n}</span></div>`;
+  return `<div class="pickchart"><h3>Gameweek ${r.gw} picks <span>${total} player${total === 1 ? "" : "s"}</span></h3>${bars.map(([code, c]) => bar(code, c.n, c.res === "?" ? "q" : c.res, `${c.name}: ${c.n} (${RES_WORD[c.res] || ""})`)).join("")}${none ? bar("None", none, "N", `No pick: ${none}`) : ""}</div>`;
+}
 
 /* ---------------------------------------------------------------- plan ahead (saved on this phone) */
 const planKey = () => `lms-plan-${myId()}`;
