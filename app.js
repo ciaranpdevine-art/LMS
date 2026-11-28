@@ -497,27 +497,38 @@ function renderTable() {
   }).join("");
   const notes = shown.filter((r) => r.everyoneSurvived).map((r) => `<p class="board-note">Gameweek ${r.gw}: everyone left went out, so everyone survived.</p>`).join("");
   el.innerHTML = `${pickChart(shown[shown.length - 1], list)}<ul class="board">${rows}</ul>${notes}`;
+  el.querySelectorAll("[data-chartteam]").forEach((b) => (b.onclick = () => { const t = b.dataset.chartteam; S.chartTeam = S.chartTeam?.team === t ? null : { gw: shown[shown.length - 1].gw, team: t }; renderTable(); }));
   el.querySelectorAll("[data-player]").forEach((b) => (b.onclick = () => { S.openPlayer = S.openPlayer === b.dataset.player ? null : b.dataset.player; renderTable(); }));
 }
 
 // Small bar chart of who picked what in the latest gameweek whose picks are public.
+// Tap a bar to see who picked that team.
 function pickChart(r, list) {
   if (!r) return "";
-  const counts = {};
-  let total = 0, none = 0;
+  const counts = {}, NONE = "__none";
+  let total = 0;
   list.forEach(([id, p]) => {
     if (p.status === "out" && p.outGw < r.gw) return;
     if (r.processed && r.results && !r.results[id]) return;
-    const pk = pickOf(r.gw, id);
-    if (!pk) { none++; total++; return; }
-    const c = counts[pk.team] || (counts[pk.team] = { n: 0, name: pk.teamName || teamName(r, pk.team), res: resultOf(r, id) });
-    c.n++; total++;
+    const pk = pickOf(r.gw, id), key = pk ? pk.team : NONE;
+    const c = counts[key] || (counts[key] = { n: 0, who: [], name: pk ? pk.teamName || teamName(r, pk.team) : "No pick", res: pk ? resultOf(r, id) : "N" });
+    c.n++; c.who.push(p.nickname); total++;
   });
-  const bars = Object.entries(counts).sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name));
+  const bars = Object.entries(counts).filter(([k]) => k !== NONE).sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name));
+  if (counts[NONE]) bars.push([NONE, counts[NONE]]);
   if (!bars.length) return "";
-  const max = Math.max(...bars.map(([, c]) => c.n), none);
-  const bar = (label, n, cls, title) => `<div class="pc-row" title="${esc(title)}"><span class="pc-team">${esc(label)}</span><span class="pc-track"><span class="pc-bar ${cls}" style="width:${Math.max(6, (n / max) * 100)}%"></span></span><span class="pc-n">${n}</span></div>`;
-  return `<div class="pickchart"><h3>Gameweek ${r.gw} picks <span>${total} player${total === 1 ? "" : "s"}</span></h3>${bars.map(([code, c]) => bar(code, c.n, c.res === "?" ? "q" : c.res, `${c.name}: ${c.n} (${RES_WORD[c.res] || ""})`)).join("")}${none ? bar("None", none, "N", `No pick: ${none}`) : ""}</div>`;
+  const max = Math.max(...bars.map(([, c]) => c.n));
+  if (S.chartTeam && (S.chartTeam.gw !== r.gw || !counts[S.chartTeam.team])) S.chartTeam = null;
+  const sel = S.chartTeam?.team;
+  const rowsHtml = bars.map(([key, c]) => {
+    const cls = c.res === "?" ? "q" : c.res, on = sel === key;
+    const row = `<button type="button" class="pc-row${on ? " on" : ""}" data-chartteam="${esc(key)}" aria-expanded="${on}"><span class="pc-team">${esc(key === NONE ? "None" : key)}</span><span class="pc-track"><span class="pc-bar ${cls}" style="width:${Math.max(6, (c.n / max) * 100)}%"></span></span><span class="pc-n">${c.n}</span></button>`;
+    if (!on) return row;
+    const word = key === NONE ? "" : c.res === "?" ? "to play" : RES_WORD[c.res] || "";
+    const who = [...c.who].sort((a, b) => a.localeCompare(b));
+    return row + `<div class="pc-who"><div class="pc-who-h"><b>${esc(c.name)}</b>${word ? `<span class="res ${cls}">${esc(word[0].toUpperCase() + word.slice(1))}</span>` : ""}</div><div class="pc-names">${who.map((n) => `<span>${esc(n)}</span>`).join("")}</div></div>`;
+  }).join("");
+  return `<div class="pickchart"><h3><span class="pc-title">Gameweek ${r.gw} picks</span><span class="pc-count">${total} player${total === 1 ? "" : "s"}</span></h3>${rowsHtml}<p class="pc-hint">Tap a team to see who picked it.</p></div>`;
 }
 
 /* ---------------------------------------------------------------- plan ahead (saved on this phone) */
